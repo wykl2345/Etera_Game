@@ -1,0 +1,11 @@
+# 忽略 python 编译文件
+__pycache__/
+*.py[cod]
+
+# 忽略虚拟环境文件夹（根据你的命名习惯添加）
+venv/
+env/
+.venv/
+
+# 忽略 Conda 导出文件（除非你自己想备份环境配置）
+.conda/
