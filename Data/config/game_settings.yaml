@@ -1,0 +1,48 @@
+# Etera_Game 游戏全局配置
+# 对应设计文档中的 /data/config/game_settings.yaml
+
+# 引擎版本
+engine_version: "1.2.0"
+
+# 游戏基本设置
+game:
+  title: "Etera_Game"
+  description: "基于Lua脚本的叙事游戏引擎"
+  start_location: "hakurei_shrine"
+  start_day: 1
+  start_time_of_day: "morning"
+
+# 角色系统设置
+character:
+  max_relation: 100
+  min_relation: -100
+  default_stats:
+    hp: 100
+    max_hp: 100
+    mp: 50
+    max_mp: 50
+    stamina: 100
+    max_stamina: 100
+    money: 0
+    exp: 0
+    level: 1
+
+# 时间系统设置
+time:
+  time_points:
+    morning: "早晨 (6:00-12:00)"
+    afternoon: "下午 (12:00-18:00)"
+    evening: "傍晚 (18:00-22:00)"
+    night: "夜晚 (22:00-6:00)"
+  actions_per_day: 3  # 每天行动次数
+
+# 存档设置
+save:
+  max_slots: 20
+  auto_save_interval: 300  # 自动保存间隔（秒）
+  max_backups: 5
+
+# 资源设置
+resources:
+  cache_size: 100
+  max_memory_mb: 512

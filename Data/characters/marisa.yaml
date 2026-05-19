@@ -1,0 +1,40 @@
+# 雾雨魔理沙 - 角色定义
+id: marisa
+name: 雾雨魔理沙
+title: 普通的魔法使
+description: >
+  居住于魔法之森的魔法使，擅长搜集和使用各种魔法道具。
+  灵梦的好友兼竞争对手。
+age: 17
+gender: female
+
+# 基础属性
+base_stats:
+  hp: 80
+  max_hp: 80
+  mp: 150
+  max_mp: 150
+  stamina: 70
+  max_stamina: 100
+  money: 500
+  exp: 0
+  level: 1
+
+# 初始好感度
+base_relation: 10
+
+# 初始位置
+base_location: "magic_forest"
+
+# 标签
+tags: ["main", "magician", "playable"]
+
+# 默认Flag
+default_flags:
+  met_player: false
+  borrowed_book: false
+
+# 关联事件
+events:
+  - "story/intro"
+  - "daily/coffee_shop"

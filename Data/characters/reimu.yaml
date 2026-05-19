@@ -1,0 +1,41 @@
+# 博丽灵梦 - 角色定义
+# 对应设计文档中的 data.get_chara("reimu")
+id: reimu
+name: 博丽灵梦
+title: 幻想乡的巫女
+description: >
+  博丽神社的巫女，负责维护幻想乡的平衡。
+  性格懒散，但在关键时刻非常可靠。
+age: 18
+gender: female
+
+# 基础属性
+base_stats:
+  hp: 120
+  max_hp: 120
+  mp: 80
+  max_mp: 80
+  stamina: 90
+  max_stamina: 100
+  money: 0
+  exp: 0
+  level: 1
+
+# 初始好感度
+base_relation: 0
+
+# 初始位置
+base_location: "hakurei_shrine"
+
+# 标签
+tags: ["main", "shrine_maiden", "playable"]
+
+# 默认Flag
+default_flags:
+  met_player: false
+  quest_active: false
+
+# 关联事件
+events:
+  - "story/intro"
+  - "daily/coffee_shop"
