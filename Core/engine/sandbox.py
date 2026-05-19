@@ -357,11 +357,20 @@ class MockLuaRuntime:
 
 
 class MockLuaGlobals:
-    """模拟Lua全局环境"""
+    """模拟Lua全局环境
+
+    兼容两种调用方式：
+      lua.globals()      # 作为方法调用 → 返回 self
+      lua.globals[key]   # 属性索引 → __getitem__/__setitem__
+    """
 
     def __init__(self, data: Dict[str, Any]):
         """初始化"""
         self._data = data
+
+    def __call__(self) -> 'MockLuaGlobals':
+        """支持 globals() 方法调用，返回自身"""
+        return self
 
     def __getitem__(self, key: str) -> Any:
         """获取全局变量"""
