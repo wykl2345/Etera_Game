@@ -14,9 +14,9 @@ return {
         ui.clear()
         ui.set_background("shrine", "fade")
         ui.text("――幻想乡，一个被遗忘了的世界。", "white", true)
-        ui.sleep(1.0)
+        util.sleep(1.0)
         ui.text("博丽神社的早晨，一如既往地安静。", "cyan")
-        ui.sleep(0.5)
+        util.sleep(0.5)
 
         -- 显示灵梦
         ui.show_character("reimu", "normal", "right")

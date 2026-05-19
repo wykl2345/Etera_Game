@@ -143,6 +143,9 @@ class LuaAPI:
             "get_chara": self._data_get_chara,
             "set_stat": self._data_set_stat,
             "get_stat": self._data_get_stat,
+            "get_relation": self._data_get_relation,
+            "set_relation": self._data_set_relation,
+            "modify_relation": self._data_modify_relation,
             "get_flag": self._data_get_flag,
             "set_flag": self._data_set_flag,
             "has_flag": self._data_has_flag,
@@ -425,6 +428,19 @@ class LuaAPI:
             bool: 是否设置成功
         """
         try:
+            # relation 不是 StatBlock 属性，转发到专门的 relation 方法
+            if stat_name == "relation":
+                if target == "player":
+                    logger.warning("player has no relation stat")
+                    return False
+                self.context.set_character_relation(target, int(value))
+                self.event_bus.emit(
+                    "character_relation_changed",
+                    target=target,
+                    value=value
+                )
+                return True
+
             if target == "player":
                 self.context.set_player_stat(stat_name, int(value))
                 self.event_bus.emit(
@@ -538,6 +554,61 @@ class LuaAPI:
     def _data_remove_item(self, item_id: str, count: int = 1) -> bool:
         """移除物品"""
         return self.context.remove_item(item_id, count)
+
+    def _data_get_relation(self, target: str) -> int:
+        """
+        获取好感度
+
+        Args:
+            target: 角色ID
+
+        Returns:
+            int: 好感度值
+        """
+        return self.context.get_character_relation(target)
+
+    def _data_set_relation(self, target: str, value: int) -> bool:
+        """
+        设置好感度为绝对值
+
+        Args:
+            target: 角色ID
+            value: 好感度值 (-100 ~ 100)
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            self.context.set_character_relation(target, int(value))
+            self.event_bus.emit(
+                "character_relation_changed",
+                target=target,
+                value=value
+            )
+            return True
+        except Exception as e:
+            logger.error(f"data.set_relation failed: {e}")
+            return False
+
+    def _data_modify_relation(self, target: str, delta: int) -> int:
+        """
+        增减好感度
+
+        Args:
+            target: 角色ID
+            delta: 好感度变化量（正值增加，负值减少）
+
+        Returns:
+            int: 修改后的好感度值
+        """
+        new_value = self.context.modify_character_relation(target, int(delta))
+        self.event_bus.emit(
+            "character_relation_changed",
+            target=target,
+            value=new_value,
+            delta=delta
+        )
+        return new_value
 
     def _data_get_item_count(self, item_id: str) -> int:
         """获取物品数量"""

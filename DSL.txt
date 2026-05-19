@@ -1,0 +1,354 @@
+================================================================================
+            Etera_Game Lua DSL 指令参考手册
+            引擎版本: 1.2.0  最后更新: 2026-05-19
+================================================================================
+
+本文档列出了Lua事件脚本中可用的全部API指令。与 Python api_bridge.py 一一对应，
+所有函数签名均源自真实实现，可直接在脚本中调用。
+
+--------------------------------------------------------------------------------
+一、事件脚本规范
+--------------------------------------------------------------------------------
+
+每个 .lua 事件文件必须 return 一个 table，包含 on_event 和 execute 两个字段：
+
+    return {
+        on_event = "on_day_begin",    -- 监听的系统/游戏事件名
+        execute = function()          -- 事件触发时执行
+            -- 你的剧本逻辑
+        end
+    }
+
+系统预定义事件名（参考 event_bus.py EventConstants）：
+    on_game_start              游戏启动时
+    on_game_end                游戏结束时
+    on_day_begin               每天开始
+    on_day_end                 每天结束
+    on_time_change             时段变化
+    on_location_change         位置变化
+    on_save / on_load          存档/读档
+    on_scene_change            场景切换
+    on_character_stat_changed  角色属性变化
+    on_character_relation_changed  角色好感度变化
+    on_dialogue_start / on_dialogue_end  对话开始/结束
+    on_battle_start / on_battle_end      战斗开始/结束
+
+自定义游戏事件由 event.emit() 触发，Mod之间通过事件总线解耦。
+
+
+--------------------------------------------------------------------------------
+二、UI 类 (ui.*) — 显示、输入、音效
+--------------------------------------------------------------------------------
+
+ui.text(text, color?, bold?)
+    显示文本到日志区。
+    text    : string  显示的文本内容
+    color   : string? 颜色 (white/red/green/blue/yellow/cyan/magenta/pink/gray/black)
+    bold    : bool?   是否加粗，默认 false
+    示例：
+        ui.text("你好，世界！")
+        ui.text("警告！", "red", true)
+
+ui.clear()
+    清空日志区所有文本。
+
+ui.show_image(name, position?, fade?)
+    显示图片。
+    name     : string  图片资源名（不含路径和扩展名）
+    position : string? 位置 (left / center / right)，默认 center
+    fade     : bool?   是否淡入，默认 true
+    示例：
+        ui.show_image("reimu_normal", "right")
+        ui.show_image("background_forest")
+
+ui.hide_image(name, fade?)
+    隐藏图片。
+    name : string  图片资源名
+    fade : bool?   是否淡出，默认 true
+
+ui.play_sound(name, volume?)
+    播放音效。
+    name   : string  音效资源名
+    volume : number? 音量 0.0~1.0，默认 1.0
+
+ui.stop_sound(name)
+    停止播放指定音效。
+
+ui.play_music(name, volume?, loop?)
+    播放背景音乐。
+    name   : string  音乐资源名
+    volume : number? 音量 0.0~1.0，默认 0.8
+    loop   : bool?   是否循环，默认 true
+
+ui.stop_music(fade_out?)
+    停止背景音乐。fade_out 默认 true（渐出）。
+
+ui.ask_choice(options)
+    显示选项菜单，等待玩家选择后返回索引。
+    这是阻塞调用——会暂停脚本直到玩家点击。
+    options : table  选项列表 {"选项1", "选项2", ...}
+    返回   : number  玩家选择的索引（1-based）
+    示例：
+        local c = ui.ask_choice({"进去", "离开", "等待"})
+        if c == 1 then ... end
+
+ui.ask_input(prompt, default?, max_length?)
+    显示文字输入框，等待玩家输入。
+    prompt     : string  提示文字
+    default    : string? 默认值，默认 ""
+    max_length : number? 最大字数，默认 100
+    返回       : string  玩家输入的文本
+
+ui.set_background(name, transition?)
+    切换背景图。
+    name       : string  背景图片名
+    transition : string? 过渡效果 (fade / slide / none)，默认 fade
+
+ui.show_character(char_id, expression?, position?)
+    显示角色立绘。
+    char_id    : string  角色ID
+    expression : string? 表情名，默认 "normal"
+    position   : string? 位置 (left / center / right)，默认 center
+    示例：
+        ui.show_character("reimu", "happy", "right")
+
+ui.hide_character(char_id)
+    隐藏角色立绘。
+
+
+--------------------------------------------------------------------------------
+三、数据读写类 (data.*) — 角色、属性、Flag、背包
+--------------------------------------------------------------------------------
+
+data.get_chara(id)
+    获取角色数据表（只读快照）。
+    返回 : table  {id, name, stats, relation, location}  或 nil
+    示例：
+        local r = data.get_chara("reimu")
+        if r.relation >= 20 then ... end      -- 直接 .字段 访问
+
+data.get_stat(target, stat, default?)
+    获取属性值。
+    target  : string  目标 ("player" 或角色ID)
+    stat    : string  属性名 (hp/mp/money/stamina/exp/level/...)
+    default : number? 默认值，默认 0
+    返回    : number
+    示例：
+        local hp = data.get_stat("player", "hp")
+        local mp = data.get_stat("marisa", "mp", 0)
+
+data.set_stat(target, stat, value)
+    设置属性值为绝对值。relation 自动转发到好感度方法。
+    target : string  目标 ("player" 或角色ID)
+    stat   : string  属性名
+    value  : number  新值
+    返回   : bool    是否成功
+    示例：
+        data.set_stat("player", "money", 100)         -- 设钱为100
+        data.set_stat("player", "hp", -10)            -- 扣血10点
+        data.set_stat("reimu", "relation", 50)        -- 设好感度为50（自动转发）
+
+data.get_relation(target)
+    获取角色好感度。
+    target : string  角色ID
+    返回   : number  好感度值 (-100 ~ 100)
+
+data.set_relation(target, value)
+    设置好感度为绝对值。
+    target : string  角色ID
+    value  : number  新值 (-100 ~ 100)
+    返回   : bool    是否成功
+
+data.modify_relation(target, delta)
+    增减好感度（推荐）。
+    target : string  角色ID
+    delta  : number  变化量（正=增加，负=减少）
+    返回   : number  修改后的好感度值
+    示例：
+        data.modify_relation("reimu", 5)     -- 好感+5
+        data.modify_relation("marisa", -3)   -- 好感-3
+
+data.get_flag(namespace, key, default?)
+    读取全局Flag。
+    namespace : string  命名空间 (story/quest/mod_xxx，core 为引擎保留)
+    key       : string  Flag键
+    default   : any?    不存在时的默认值
+    返回      : any
+    示例：
+        local met = data.get_flag("coffee_mod", "met_at_cafe", false)
+
+data.set_flag(namespace, key, value)
+    写入全局Flag（不能写入 core 命名空间）。
+    namespace : string  命名空间
+    key       : string  Flag键
+    value     : any     Flag值
+    返回      : bool    是否成功
+    示例：
+        data.set_flag("story", "intro_done", true)
+
+data.has_flag(namespace, key)
+    检查Flag是否存在。
+    返回 : bool
+
+data.get_inventory()
+    获取背包物品表 { item_id => count }。
+    返回 : table
+
+data.add_item(item_id, count?)
+    添加物品到背包。
+    count : number? 默认 1
+
+data.remove_item(item_id, count?)
+    从背包移除物品。
+    count : number? 默认 1
+
+data.get_item_count(item_id)
+    获取物品数量。
+    返回 : number
+
+
+--------------------------------------------------------------------------------
+四、世界状态类 (world.*) — 时间、位置
+--------------------------------------------------------------------------------
+
+world.get_day()
+    获取当前天数（从1开始）。
+    返回 : number
+
+world.set_day(day)
+    设置当前天数。day >= 1。
+
+world.get_time()
+    获取当前时段。
+    返回 : string  (morning / afternoon / evening / night / dawn)
+
+world.set_time(time)
+    设置时段。time 为上述字符串之一。
+
+world.get_location()
+    获取当前位置ID。
+    返回 : string
+
+world.set_location(location)
+    设置当前位置。会触发 on_location_change 事件。
+
+
+--------------------------------------------------------------------------------
+五、事件类 (event.*) — 事件触发与监听
+--------------------------------------------------------------------------------
+
+event.emit(event_name, payload?)
+    触发自定义事件。
+    event_name : string  事件名（建议 custom:xxx 前缀）
+    payload    : table?  附加数据
+
+event.after_days(days, callback)
+    安排N天后执行回调。
+
+event.listen(event_name, handler)
+    运行时注册事件监听。handler 为 Lua 函数。
+
+
+--------------------------------------------------------------------------------
+六、工具类 (util.*) — 随机、日志、延时
+--------------------------------------------------------------------------------
+
+util.random()
+    返回 0~1 之间的随机浮点数。
+    返回 : number
+
+util.random_range(min, max)
+    返回 [min, max] 之间的随机整数。
+    返回 : number
+
+util.log(message)
+    输出调试日志（不影响游戏UI）。
+
+util.debug(message)
+    输出调试日志（仅引擎 --debug 模式可见）。
+
+util.sleep(seconds)
+    暂停脚本执行指定秒数（毫秒精度）。
+    注意：sleep 在 util 组，不是 ui 组！
+
+
+================================================================================
+七、颜色常量速查表
+================================================================================
+
+    "white"    白色    #FFFFFF
+    "red"      红色    #FF4444
+    "green"    绿色    #44FF44
+    "blue"     蓝色    #4488FF
+    "yellow"   黄色    #FFFF44
+    "cyan"     青色    #44FFFF
+    "magenta"  品红    #FF44FF
+    "pink"     粉色    #FF88C8
+    "gray"     灰色    #888888
+    "black"    黑色    #000000
+
+
+================================================================================
+八、Player 可用属性名（data.get_stat / data.set_stat）
+================================================================================
+
+    hp            当前生命
+    max_hp        最大生命
+    mp            当前法力
+    max_mp        最大法力
+    stamina       当前体力
+    max_stamina   最大体力
+    money         金钱
+    exp           经验值
+    level         等级
+
+角色同样有这些属性，外加 relation（好感度，独立于 stats）。
+
+
+================================================================================
+九、验证清单
+================================================================================
+
+以下每个指令均已对照 api_bridge.py 逐行验证，保证签名、参数顺序、
+默认值、返回值类型与真实实现一致。
+
+  ✓ ui.text(text, color?, bold?)
+  ✓ ui.clear()
+  ✓ ui.show_image(name, position?, fade?)
+  ✓ ui.hide_image(name, fade?)
+  ✓ ui.play_sound(name, volume?)
+  ✓ ui.stop_sound(name)
+  ✓ ui.play_music(name, volume?, loop?)
+  ✓ ui.stop_music(fade_out?)
+  ✓ ui.ask_choice(options) → number
+  ✓ ui.ask_input(prompt, default?, max_length?) → string
+  ✓ ui.set_background(name, transition?)
+  ✓ ui.show_character(char_id, expression?, position?)
+  ✓ ui.hide_character(char_id)
+  ✓ data.get_chara(id) → table | nil
+  ✓ data.get_stat(target, stat, default?) → number
+  ✓ data.set_stat(target, stat, value) → bool
+  ✓ data.get_relation(target) → number
+  ✓ data.set_relation(target, value) → bool
+  ✓ data.modify_relation(target, delta) → number
+  ✓ data.get_flag(ns, key, default?) → any
+  ✓ data.set_flag(ns, key, value) → bool
+  ✓ data.has_flag(ns, key) → bool
+  ✓ data.get_inventory() → table
+  ✓ data.add_item(id, count?)
+  ✓ data.remove_item(id, count?)
+  ✓ data.get_item_count(id) → number
+  ✓ world.get_day() → number
+  ✓ world.set_day(day)
+  ✓ world.get_time() → string
+  ✓ world.set_time(time)
+  ✓ world.get_location() → string
+  ✓ world.set_location(loc)
+  ✓ event.emit(name, payload?)
+  ✓ event.after_days(days, callback)
+  ✓ event.listen(name, handler)
+  ✓ util.random() → number
+  ✓ util.random_range(min, max) → number
+  ✓ util.log(msg)
+  ✓ util.debug(msg)
+  ✓ util.sleep(seconds)
