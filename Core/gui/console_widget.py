@@ -17,11 +17,12 @@
 """
 
 from PySide6.QtWidgets import QTextEdit, QWidget, QVBoxLayout
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import (
     QFont, QTextCursor, QColor, QTextCharFormat,
-    QKeyEvent, QMouseEvent
+    QKeyEvent, QMouseEvent, QTextBlock
 )
+import re
 import logging
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,14 @@ class ConsoleWidget(QWidget):
         # 光标保持文本颜色
         self._editor.setCursorWidth(0)  # 隐藏闪烁光标（只读模式）
 
+        # 安装事件过滤器以拦截鼠标事件（单击 + 悬浮高亮）
+        self._editor.viewport().installEventFilter(self)
+        self._editor.viewport().setMouseTracking(True)
+
+        # 悬浮高亮状态
+        self._hovered_line: int = -1
+        self._highlight_selection = QTextEdit.ExtraSelection()
+
         layout.addWidget(self._editor)
 
     # ─── 公开 API ─────────────────────────────────────
@@ -192,20 +201,72 @@ class ConsoleWidget(QWidget):
                     return
         super().keyPressEvent(event)
 
-    def mousePressEvent(self, event: QMouseEvent):
-        """单击选择（匹配 [N] 格式的选项行）"""
-        if self._waiting_choice and event.button() == Qt.LeftButton:
-            cursor = self._editor.cursorForPosition(event.pos())
-            line_text = cursor.block().text()
-            # 解析 [1] [2] ... 格式
-            import re
-            m = re.match(r'\s*\[(\d+)\]', line_text)
-            if m:
-                idx = int(m.group(1))
-                if 1 <= idx <= len(self._choice_options):
+    # ─── 事件过滤器（拦截 viewport 鼠标事件）───────────
+
+    def eventFilter(self, obj, event):
+        """拦截编辑器视口的鼠标事件"""
+        if obj != self._editor.viewport():
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseButtonPress:
+            if self._waiting_choice and event.button() == Qt.LeftButton:
+                idx = self._option_at_pos(event.pos())
+                if idx > 0:
                     self._resolve_choice(idx)
+                    return True
+
+        elif event.type() == QEvent.MouseMove:
+            if self._waiting_choice:
+                idx = self._option_at_pos(event.pos())
+                self._update_hover(idx)
+            else:
+                self._clear_hover()
+
+        return super().eventFilter(obj, event)
+
+    def _option_at_pos(self, pos) -> int:
+        """检测指定坐标是否在选项行上，返回索引（1-based），否则 0"""
+        cursor = self._editor.cursorForPosition(pos)
+        line_text = cursor.block().text()
+        m = re.match(r'\s*\[(\d+)\]', line_text)
+        if m:
+            idx = int(m.group(1))
+            if 1 <= idx <= len(self._choice_options):
+                return idx
+        return 0
+
+    def _update_hover(self, idx: int):
+        """更新悬浮高亮"""
+        if idx == self._hovered_line:
+            return
+        self._clear_hover()
+
+        if idx > 0:
+            # 遍历文档 block 找匹配 [N] 的行
+            doc = self._editor.document()
+            for i in range(doc.blockCount()):
+                block = doc.findBlockByNumber(i)
+                m = re.match(r'\s*\[(\d+)\]', block.text())
+                if m and int(m.group(1)) == idx:
+                    fmt = QTextCharFormat()
+                    fmt.setBackground(QColor("#2a2a40"))
+                    fmt.setForeground(QColor("#FFFFFF"))
+                    sel = QTextEdit.ExtraSelection()
+                    sel.format = fmt
+                    sel.cursor = QTextCursor(block)
+                    sel.cursor.movePosition(QTextCursor.StartOfBlock, QTextCursor.MoveAnchor)
+                    sel.cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+                    self._editor.setExtraSelections([sel])
+                    self._hovered_line = idx
+                    self._editor.viewport().setCursor(Qt.PointingHandCursor)
                     return
-        super().mousePressEvent(event)
+
+    def _clear_hover(self):
+        """清除悬浮高亮"""
+        if self._hovered_line >= 0:
+            self._editor.setExtraSelections([])
+            self._hovered_line = -1
+            self._editor.viewport().setCursor(Qt.ArrowCursor)
 
     def _resolve_choice(self, index: int):
         """玩家做出了选择"""
