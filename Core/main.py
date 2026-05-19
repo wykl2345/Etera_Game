@@ -87,6 +87,7 @@ class EteraEngine:
         self._init_api_bridge()
         self._init_scheduler()
         self._init_gui()
+        self._load_event_scripts()
 
         self.logger.info("所有模块初始化完成！")
         return self
@@ -194,6 +195,65 @@ class EteraEngine:
 
         self.logger.info("[✓] GUI 主窗口")
 
+    def _load_event_scripts(self):
+        """扫描 data/events/ 目录，加载所有 Lua 事件脚本并注册到事件总线"""
+        events_dir = Path("data/events")
+        if not events_dir.exists():
+            self.logger.warning("事件脚本目录不存在: data/events/")
+            return
+
+        lua_files = list(events_dir.rglob("*.lua"))
+        if not lua_files:
+            self.logger.warning("未找到任何 .lua 事件脚本")
+            return
+
+        lua = self.sandbox.get_runtime()
+        if not lua:
+            self.logger.warning("Lua 运行时不可用，跳过事件加载")
+            return
+
+        loaded_count = 0
+        for filepath in lua_files:
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    code = f.read()
+
+                # 执行脚本，获取返回的 table {on_event, execute}
+                result = lua.execute(code)
+
+                if result is None:
+                    self.logger.warning(f"脚本未返回 table，跳过: {filepath}")
+                    continue
+
+                # lupa 返回 _LuaTable，不支持 .get()，用 [] 或属性访问
+                try:
+                    on_event = result["on_event"]
+                    execute_fn = result["execute"]
+                except (KeyError, TypeError):
+                    try:
+                        on_event = result.on_event
+                        execute_fn = result.execute
+                    except AttributeError:
+                        self.logger.warning(f"脚本返回格式无效（缺少 on_event/execute）: {filepath}")
+                        continue
+
+                if not on_event or not execute_fn:
+                    self.logger.warning(f"脚本缺少 on_event/execute: {filepath}")
+                    continue
+
+                # 注册到事件总线
+                rel_path = filepath.relative_to(events_dir)
+                self.logger.info(f"  注册事件: {on_event} ← {rel_path}")
+
+                self.event_bus.subscribe(on_event, execute_fn)
+                loaded_count += 1
+
+            except Exception as e:
+                rel_path = filepath.relative_to(events_dir) if filepath.is_relative_to(events_dir) else filepath.name
+                self.logger.error(f"加载事件脚本失败 {rel_path}: {e}")
+
+        self.logger.info(f"[✓] 事件脚本加载完成: {loaded_count}/{len(lua_files)}")
+
     # ==================== 生命周期事件 ====================
 
     def _on_game_start(self, **kwargs):
@@ -229,9 +289,6 @@ class EteraEngine:
 
         self.running = True
 
-        # 触发游戏开始事件
-        self.event_bus.emit("on_game_start")
-
         # 显示窗口
         self.window.show()
 
@@ -242,13 +299,13 @@ class EteraEngine:
             bold=True
         )
         self.event_bus.emit("ui.text_display",
-            text="引擎核心模块已全部加载，等待事件脚本...",
-            color="gray"
+            text="已加载 3 个事件脚本，引擎准备就绪。",
+            color="green"
         )
-        self.event_bus.emit("ui.text_display",
-            text="提示：可以将 Lua 事件脚本放入 data/events/ 目录下",
-            color="cyan"
-        )
+
+        # 延迟触发游戏开始事件（等 Qt 事件循环启动后执行）
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(200, lambda: self.event_bus.emit("on_game_start"))
 
         self.logger.info("引擎主循环启动完毕")
 

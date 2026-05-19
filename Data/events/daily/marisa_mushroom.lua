@@ -7,7 +7,7 @@ return {
 
     execute = function()
         -- ▼ 条件1：必须已经完成序章
-        if not data.has_flag("core", "intro_completed") then
+        if not data.has_flag("story", "intro_completed") then
             return
         end
 

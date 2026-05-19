@@ -6,7 +6,7 @@ return {
 
     execute = function()
         -- 事件仅在首次触发
-        if data.get_flag("core", "intro_completed", false) then
+        if data.get_flag("story", "intro_completed", false) then
             return
         end
 
@@ -41,7 +41,7 @@ return {
         ui.text("新的旅程开始了……", "yellow", true)
 
         -- 标记事件完成
-        data.set_flag("core", "intro_completed", true)
+        data.set_flag("story", "intro_completed", true)
         ui.hide_character("reimu")
     end
 }

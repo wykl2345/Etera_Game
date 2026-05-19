@@ -80,7 +80,7 @@ class WindowManager(QMainWindow):
         from .image_widget import ImageWidget
 
         self.log_widget = LogWidget(self)
-        self.choice_widget = ChoiceWidget(self)
+        self.choice_widget = ChoiceWidget(self._event_bus, self)
         self.image_widget = ImageWidget(self._resource_base / "images", self)
 
     def _setup_layout(self):

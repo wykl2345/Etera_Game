@@ -305,8 +305,11 @@ class LuaAPI:
         Returns:
             int: 玩家选择的索引（从1开始）
         """
+        # 兼容 lupa 传入的 LuaTable（转为 Python list）
+        if hasattr(options, '__iter__') and not isinstance(options, (str, bytes)):
+            options = list(options)
         if not isinstance(options, list) or len(options) == 0:
-            logger.error("ui.ask_choice: options must be non-empty list")
+            logger.error(f"ui.ask_choice: options must be non-empty list, got {type(options)}")
             return 0
 
         # 发送选择菜单显示事件

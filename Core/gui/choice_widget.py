@@ -64,12 +64,13 @@ class ChoiceWidget(QWidget):
 
     choice_made = Signal(int)  # 发射选项索引
 
-    def __init__(self, parent=None):
+    def __init__(self, event_bus=None, parent=None):
         super().__init__(parent)
+        self._event_bus = event_bus
         self._setup_ui()
         self._buttons: list[ChoiceButton] = []
         self._active = False
-        logger.info("ChoiceWidget 初始化完成")
+        logger.info("ChoiceWidget 初始化完成" + (" (event_bus已连接)" if event_bus else ""))
 
     def _setup_ui(self):
         """初始化UI"""
@@ -151,12 +152,11 @@ class ChoiceWidget(QWidget):
         self._active = False
         self.choice_made.emit(index)
 
-        # 发射事件总线事件
-        try:
-            from Core.engine.event_bus import get_event_bus
-            get_event_bus().emit("ui.choice_made", choice_index=index)
-        except Exception as e:
-            logger.warning(f"发射 choice_made 事件失败: {e}")
+        # 发射事件总线事件（使用传入的实例，而非创建新实例）
+        if self._event_bus:
+            self._event_bus.emit("ui.choice_made", choice_index=index)
+        else:
+            logger.warning("ChoiceWidget: event_bus 未设置，无法发射 choice_made 事件")
 
         # 延迟隐藏（让玩家看到点击反馈）
         from PySide6.QtCore import QTimer

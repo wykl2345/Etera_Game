@@ -128,7 +128,7 @@ class ScriptScheduler:
         self._current_script: Optional[ScriptInfo] = None
 
         # 等待队列
-        _pending_waits: Dict[str, WaitRequest] = {}
+        self._pending_waits: Dict[str, WaitRequest] = {}
         self._wait_counter: int = 0
 
         # 脚本状态
