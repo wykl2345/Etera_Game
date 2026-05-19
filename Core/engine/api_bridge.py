@@ -710,14 +710,18 @@ class LuaAPI:
 
     def _util_sleep(self, seconds: float) -> None:
         """
-        暂停执行（毫秒级精度）
+        暂停执行（非阻塞，使用 QEventLoop 嵌套）
+
+        Qt 窗口在此期间正常刷新，文字逐行显示。
 
         Args:
             seconds: 暂停秒数
         """
         if seconds > 0:
-            import time
-            time.sleep(seconds)
+            from PySide6.QtCore import QEventLoop, QTimer
+            loop = QEventLoop()
+            QTimer.singleShot(int(seconds * 1000), loop.quit)
+            loop.exec()
 
     # ==================== 世界状态类实现 ====================
 

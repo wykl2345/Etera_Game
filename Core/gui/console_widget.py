@@ -192,13 +192,12 @@ class ConsoleWidget(QWidget):
                     return
         super().keyPressEvent(event)
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        """双击选择"""
-        if self._waiting_choice:
-            # 获取点击位置的行号...
+    def mousePressEvent(self, event: QMouseEvent):
+        """单击选择（匹配 [N] 格式的选项行）"""
+        if self._waiting_choice and event.button() == Qt.LeftButton:
             cursor = self._editor.cursorForPosition(event.pos())
             line_text = cursor.block().text()
-            # 简单解析 [1] 格式
+            # 解析 [1] [2] ... 格式
             import re
             m = re.match(r'\s*\[(\d+)\]', line_text)
             if m:
@@ -206,7 +205,7 @@ class ConsoleWidget(QWidget):
                 if 1 <= idx <= len(self._choice_options):
                     self._resolve_choice(idx)
                     return
-        super().mouseDoubleClickEvent(event)
+        super().mousePressEvent(event)
 
     def _resolve_choice(self, index: int):
         """玩家做出了选择"""
