@@ -14,9 +14,16 @@ Etera_Game 引擎启动入口
 """
 
 import sys
+import os
 import logging
 from pathlib import Path
 from typing import Optional
+
+# 将项目根目录加入 sys.path，确保 from Core.xxx 导入可用
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+    os.chdir(str(_project_root))  # 同时切换工作目录到项目根
 
 # ==================== 日志配置 ====================
 
