@@ -279,6 +279,78 @@ class EteraEngine:
         """游戏结束事件"""
         self.logger.info("游戏结束")
 
+    # ==================== 主菜单 ====================
+
+    TITLE_ART = r"""
+     ______     __
+    / ____/__  / /_____ _________
+   / __/ / _ \/ __/ __ `/ ___/ _ `/
+  / /___/  __/ /_/ /_/ / /  /  __/
+ /_____/\___/\__/\__,_/_/   \___/
+    """
+
+    def _show_main_menu(self) -> str:
+        """显示主菜单并返回玩家选择: start / continue / settings / exit"""
+        c = self.window.console
+        c.clear()
+
+        # ASCII 标题
+        for line in self.TITLE_ART.strip('\n').split('\n'):
+            c.write(line, "cyan", True)
+        c.write("")
+        c.write("  ~ 幻 想 乡 叙 事 引 擎 ~", "yellow")
+        c.write("")
+        c.write("─" * 52, "dim")
+        c.write("")
+
+        # 菜单项
+        has_save = self.save_manager.has_quick_save()
+        c.write("  [1]  开始新游戏", "menu")
+        if has_save:
+            c.write("  [2]  继续游戏", "menu")
+        else:
+            c.write("  [2]  继续游戏  (无存档)", "dim")
+        c.write("  [3]  设置", "menu")
+        c.write("  [4]  退出游戏", "menu")
+        c.write("")
+        c.write("─" * 52, "dim")
+        c.write("")
+        c.write("  ▸ 按数字键选择...", "dim")
+
+        # 激活键盘监听
+        c.start_waiting(4)
+
+        # 等待选择（嵌套 QEventLoop）
+        choice = self.scheduler.wait_for_choice()
+        c.stop_waiting()
+        c.write("")
+
+        if choice == 1:
+            return "start"
+        elif choice == 2 and has_save:
+            return "continue"
+        elif choice == 3:
+            return "settings"
+        else:
+            return "exit"
+
+    def _show_settings_menu(self):
+        """显示设置菜单"""
+        c = self.window.console
+        c.clear()
+        c.write("", "white")
+        c.write("  ═══ 设  置 ═══", "cyan", True)
+        c.write("")
+        c.write("  游戏设置（敬请期待）", "dim")
+        c.write("")
+        c.write("  [1]  返回主菜单", "menu")
+        c.write("")
+        c.start_waiting(1)
+        choice = self.scheduler.wait_for_choice()
+        c.stop_waiting()
+        if choice == 1:
+            return
+
     # ==================== 启动与运行 ====================
 
     def run(self):
@@ -292,20 +364,35 @@ class EteraEngine:
         # 显示窗口
         self.window.show()
 
-        # 在日志中显示欢迎信息
-        self.event_bus.emit("ui.text_display",
-            text="欢迎来到 Etera_Game！",
-            color="yellow",
-            bold=True
-        )
-        self.event_bus.emit("ui.text_display",
-            text="已加载 3 个事件脚本，引擎准备就绪。",
-            color="green"
-        )
+        # ── 主菜单循环 ──
+        while True:
+            action = self._show_main_menu()
 
-        # 延迟触发游戏开始事件（等 Qt 事件循环启动后执行）
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(200, lambda: self.event_bus.emit("on_game_start"))
+            if action == "start":
+                # 开始新游戏
+                self.window.console.write("")
+                self.window.console.write("  正在进入幻想乡...", "green")
+                self.window.console.write("")
+
+                # 触发游戏开始
+                self.event_bus.emit("on_game_start")
+                break  # 进入 Qt 事件循环
+
+            elif action == "continue":
+                if self.save_manager.quick_load():
+                    self.window.console.write("  存档已加载。", "green")
+                else:
+                    self.window.console.write("  加载存档失败。", "red")
+                continue  # 回到主菜单
+
+            elif action == "settings":
+                self._show_settings_menu()
+                continue
+
+            elif action == "exit":
+                self.window.console.write("  再见。", "dim")
+                self.window.close()
+                return
 
         self.logger.info("引擎主循环启动完毕")
 

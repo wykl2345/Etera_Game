@@ -1,21 +1,19 @@
 """
 主窗口管理器 (window_manager.py)
 
-整合 LogWidget、ChoiceWidget、ImageWidget 三个子组件，
-管理场景布局和主题配置。
+命令行风格的单窗口管理器。
+整合 ConsoleWidget（主界面）+ ImageWidget（立绘，可选）。
+事件总线连接集中在 ConsoleWidget。
 
-与设计文档对应：
-- 主窗口管理
-- 布局组合：Log + Choice + Image
-- 信号连接：从事件总线到各Widget
+终端风格：暗底亮字，等宽字体，选项嵌入文本。
 """
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QStatusBar, QLabel
+    QMainWindow, QWidget, QVBoxLayout,
+    QStatusBar, QLabel
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QAction
+from PySide6.QtGui import QAction
 from pathlib import Path
 import logging
 
@@ -24,10 +22,9 @@ logger = logging.getLogger(__name__)
 
 class WindowManager(QMainWindow):
     """
-    主窗口管理器
+    终端风格主窗口
 
-    组合三个核心组件，管理整体布局和主题配置。
-    连接事件总线到各个Widget的事件处理入口。
+    组合 ConsoleWidget + 可选的 ImageWidget。
     """
 
     def __init__(
@@ -52,142 +49,105 @@ class WindowManager(QMainWindow):
     def _setup_window(self, title: str):
         """设置窗口属性"""
         self.setWindowTitle(title)
-        self.setMinimumSize(960, 720)
-        self.resize(1280, 800)
+        self.setMinimumSize(900, 650)
+        self.resize(1100, 780)
 
-        # 设置窗口样式
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #1a1a2e;
-            }
-            QSplitter::handle {
-                background-color: #0f3460;
-                width: 2px;
+                background-color: #0C0C0C;
             }
             QStatusBar {
-                background-color: #0f3460;
-                color: #888;
-                font-size: 12px;
-                padding: 2px 10px;
+                background-color: #181818;
+                color: #606060;
+                font-size: 11px;
+                padding: 2px 12px;
+                border-top: 1px solid #252525;
             }
         """)
 
     def _create_widgets(self):
         """创建子组件"""
-        # 延迟导入避免循环依赖
-        from .log_widget import LogWidget
-        from .choice_widget import ChoiceWidget
-        from .image_widget import ImageWidget
+        from Core.gui.console_widget import ConsoleWidget
+        from Core.gui.image_widget import ImageWidget
 
-        self.log_widget = LogWidget(self)
-        self.choice_widget = ChoiceWidget(self._event_bus, self)
+        self.console = ConsoleWidget(self._event_bus, self)
         self.image_widget = ImageWidget(self._resource_base / "images", self)
+        self.image_widget.hide()  # 默认隐藏，需要时再显示
 
     def _setup_layout(self):
-        """设置主布局"""
+        """主布局：图像区 + 控制台"""
         central = QWidget()
         self.setCentralWidget(central)
 
-        # 主布局：上下结构
-        main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # 上半部分：图片区
-        main_layout.addWidget(self.image_widget, 3)
+        # 图像区（默认隐藏）
+        layout.addWidget(self.image_widget, 0)  # stretch=0 收缩到最小
 
-        # 下半部分：日志区 + 选项区（用分割线分隔）
-        bottom_widget = QWidget()
-        bottom_layout = QVBoxLayout(bottom_widget)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.setSpacing(0)
-
-        bottom_layout.addWidget(self.log_widget, 2)
-        bottom_layout.addWidget(self.choice_widget, 1)
-
-        main_layout.addWidget(bottom_widget, 2)
+        # 控制台主体
+        layout.addWidget(self.console, 1)
 
         # 状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self._day_label = QLabel("Day 1")
-        self._location_label = QLabel("Home")
+        self._day_label = QLabel("")
+        self._location_label = QLabel("")
         self.status_bar.addPermanentWidget(self._day_label)
         self.status_bar.addPermanentWidget(self._location_label)
 
     def _create_menu(self):
-        """创建菜单栏"""
+        """菜单栏"""
         menubar = self.menuBar()
         menubar.setStyleSheet("""
             QMenuBar {
-                background-color: #16213e;
-                color: #e0e0e0;
-                border-bottom: 1px solid #0f3460;
+                background-color: #181818;
+                color: #909090;
+                border-bottom: 1px solid #252525;
             }
             QMenuBar::item:selected {
-                background-color: #0f3460;
+                background-color: #303030;
             }
             QMenu {
-                background-color: #16213e;
-                color: #e0e0e0;
-                border: 1px solid #0f3460;
+                background-color: #181818;
+                color: #909090;
+                border: 1px solid #303030;
             }
             QMenu::item:selected {
-                background-color: #0f3460;
+                background-color: #303030;
             }
         """)
 
-        # 游戏菜单
         game_menu = menubar.addMenu("游戏")
-        save_action = QAction("保存", self)
+        save_action = QAction("保存 (Ctrl+S)", self)
         save_action.setShortcut("Ctrl+S")
         game_menu.addAction(save_action)
 
-        load_action = QAction("读取", self)
-        load_action.setShortcut("Ctrl+L")
-        game_menu.addAction(load_action)
-
         game_menu.addSeparator()
-        quit_action = QAction("退出", self)
+        quit_action = QAction("退出 (Esc)", self)
         quit_action.setShortcut("Esc")
         quit_action.triggered.connect(self.close)
         game_menu.addAction(quit_action)
 
-        # 调试菜单
         debug_menu = menubar.addMenu("调试")
-        clear_log_action = QAction("清空日志", self)
-        clear_log_action.triggered.connect(self.log_widget.clear_text)
-        debug_menu.addAction(clear_log_action)
+        clear_action = QAction("清空控制台", self)
+        clear_action.triggered.connect(self.console.clear)
+        debug_menu.addAction(clear_action)
 
     def _connect_events(self):
-        """连接事件总线到各Widget"""
+        """连接事件总线"""
         if not self._event_bus:
-            logger.warning("事件总线未设置，跳过事件连接")
             return
-
         bus = self._event_bus
 
-        # LogWidget 事件
         self._event_connections.extend([
-            bus.subscribe("ui.text_display", self.log_widget.on_text_display),
-            bus.subscribe("ui.clear", self.log_widget.on_clear),
+            bus.subscribe("ui.text_display", self.console.on_text_display),
+            bus.subscribe("ui.clear", self.console.on_clear),
+            bus.subscribe("ui.choice_show", self.console.on_choice_show),
         ])
 
-        # ChoiceWidget 事件
-        self._event_connections.extend([
-            bus.subscribe("ui.choice_show", self.choice_widget.on_choice_show),
-        ])
-
-        # ImageWidget 事件
-        self._event_connections.extend([
-            bus.subscribe("ui.image_show", self.image_widget.on_image_show),
-            bus.subscribe("ui.image_hide", self.image_widget.on_image_hide),
-            bus.subscribe("ui.character_show", self.image_widget.on_character_show),
-            bus.subscribe("ui.character_hide", self.image_widget.on_character_hide),
-            bus.subscribe("ui.background_set", self.image_widget.on_background_set),
-        ])
-
-        # 状态栏更新事件
+        # 状态栏
         self._event_connections.extend([
             bus.subscribe("on_day_begin", self._on_day_begin),
             bus.subscribe("on_location_change", self._on_location_change),
@@ -196,22 +156,22 @@ class WindowManager(QMainWindow):
         logger.info(f"事件连接完成: {len(self._event_connections)} 个订阅")
 
     def _on_day_begin(self, day: int, **kwargs):
-        """更新状态栏天数"""
         self._day_label.setText(f"Day {day}")
 
     def _on_location_change(self, location: str, **kwargs):
-        """更新状态栏位置"""
         self._location_label.setText(location)
 
     def update_status(self, day: int = None, location: str = None):
-        """手动更新状态栏"""
         if day is not None:
             self._day_label.setText(f"Day {day}")
         if location is not None:
             self._location_label.setText(location)
 
+    def show_image_area(self):
+        """显示图像区域（需要时调用）"""
+        self.image_widget.show()
+
     def cleanup(self):
-        """清理事件连接和资源"""
         for unsubscribe in self._event_connections:
             try:
                 unsubscribe()
@@ -221,6 +181,5 @@ class WindowManager(QMainWindow):
         logger.info("WindowManager 已清理")
 
     def closeEvent(self, event):
-        """窗口关闭事件"""
         self.cleanup()
         super().closeEvent(event)
