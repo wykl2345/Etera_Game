@@ -81,19 +81,16 @@ class LuaSandbox:
 
     def __init__(
         self,
-        api_bridge: Optional[Any] = None,
-        unpacker: bool = True
+        api_bridge: Optional[Any] = None
     ):
         """
         初始化Lua沙箱
 
         Args:
             api_bridge: API桥接器实例
-            unpacker: 是否启用Python对象解包
         """
         self.api_bridge = api_bridge
         self._runtime: Optional[Any] = None
-        self._unpacker = unpacker
 
         # 初始化Lua运行时
         self._init_runtime()
@@ -110,7 +107,6 @@ class LuaSandbox:
         try:
             # 创建Lua运行时
             self._runtime = lupa.LuaRuntime(
-                unpacker=self._unpacker,
                 max_memory=256 * 1024 * 1024,  # 256MB内存限制
             )
 
@@ -150,57 +146,25 @@ class LuaSandbox:
             except Exception:
                 pass
 
-        # 设置安全的全局环境
-        safe_globals = {
+        # 替换危险的全局函数为安全版本
+        safe_overrides = {
             "print": self._safe_print,
-            "type": type,
-            "tostring": tostring,
-            "tonumber": tonumber,
-            "ipairs": ipairs,
-            "pairs": pairs,
-            "next": next,
-            "select": select,
-            "unpack": unpack,
-            "table": {
-                "concat": self._safe_table_concat,
-                "insert": table.insert,
-                "remove": table.remove,
-                "sort": table.sort,
-            },
-            "string": {
-                "len": len,
-                "sub": string.sub,
-                "upper": string.upper,
-                "lower": string.lower,
-                "find": string.find,
-                "match": string.match,
-                "gmatch": string.gmatch,
-                "gsub": string.gsub,
-                "rep": string.rep,
-                "reverse": string.reverse,
-                "format": string.format,
-                "byte": string.byte,
-                "char": string.char,
-            },
-            "math": {
-                "abs": abs,
-                "ceil": math.ceil,
-                "floor": math.floor,
-                "max": max,
-                "min": min,
-                "pow": pow,
-                "sqrt": math.sqrt,
-                "random": self._safe_math_random,
-                # 不提供randomseed
-            },
         }
-
-        # 注入安全全局函数
-        for name, value in safe_globals.items():
+        for name, func in safe_overrides.items():
             try:
-                lua.globals()[name] = value
+                lua.globals()[name] = func
+                logger.debug(f"已覆盖全局函数: {name}")
             except Exception:
                 pass
+
+        # 限制 math.randomseed（禁止操控随机种子）
+        try:
+            math_mod = lua.globals()["math"]
+            if math_mod:
+                math_mod["randomseed"] = None
+                logger.debug("已禁用 math.randomseed")
+        except Exception:
+            pass
 
     def _safe_print(self, *args: Any) -> None:
         """安全的print函数"""
