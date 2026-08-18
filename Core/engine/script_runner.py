@@ -111,6 +111,9 @@ class ScriptScheduler:
         # 事件监听器清理函数
         self._listeners: List[Callable] = []
 
+        # 中止标志（F5 重启时设置，在 wait_for_* 中检测）
+        self._aborted: bool = False
+
         # 注册事件监听
         self._register_event_listeners()
 
@@ -150,6 +153,9 @@ class ScriptScheduler:
         Qt 主线程在此处进入嵌套事件循环，用户点击选项后
         resolve_wait() 调用 loop.quit() 退出并返回结果。
         """
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
+
         self._begin_wait(WaitType.CHOICE)
 
         loop = QEventLoop()
@@ -157,6 +163,10 @@ class ScriptScheduler:
         loop.exec()  # ← 嵌套事件循环，Qt 仍能处理点击
 
         self._end_wait()
+
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
+
         result = self._wait_result
         return result if result is not None else 1
 
@@ -164,6 +174,9 @@ class ScriptScheduler:
         """
         等待玩家输入文本 —— 嵌套 QEventLoop
         """
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
+
         self._begin_wait(WaitType.INPUT)
 
         loop = QEventLoop()
@@ -171,6 +184,10 @@ class ScriptScheduler:
         loop.exec()
 
         self._end_wait()
+
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
+
         result = self._wait_result
         return result if result else ""
 
@@ -180,6 +197,9 @@ class ScriptScheduler:
 
         如果提供 timeout，超时后自动退出返回 False。
         """
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
+
         self._begin_wait(WaitType.CLICK)
 
         loop = QEventLoop()
@@ -196,6 +216,9 @@ class ScriptScheduler:
 
         if timer:
             timer.stop()
+
+        if self._aborted:
+            raise ScriptAbortedError("脚本已被中止")
 
         timed_out = (self._wait_result is None)
         self._end_wait()
@@ -271,6 +294,9 @@ class ScriptScheduler:
         if len(self._script_history) > self._max_history:
             self._script_history = self._script_history[-self._max_history:]
 
+        # 重置中止标志（新脚本开始）
+        self._aborted = False
+
         try:
             self._state = ScriptState.RUNNING
             script_info.state = ScriptState.RUNNING
@@ -293,6 +319,14 @@ class ScriptScheduler:
             self.event_bus.emit("script.completed", script=script_info.name)
             logger.info(f"脚本完成: {script_info.name}")
             return True
+
+        except ScriptAbortedError as e:
+            script_info.state = ScriptState.ERROR
+            script_info.error = str(e)
+            self._state = ScriptState.IDLE
+            self.event_bus.emit("script.aborted", script=script_info.name, error=str(e))
+            logger.info(f"脚本已中止: {script_info.name}")
+            return False
 
         except Exception as e:
             script_info.state = ScriptState.ERROR
@@ -332,6 +366,7 @@ class ScriptScheduler:
 
     def stop_all(self) -> None:
         """停止所有脚本"""
+        self._aborted = True
         if self._active_loop and self._active_loop.isRunning():
             self._active_loop.exit(1)
         self._current_script = None
@@ -363,6 +398,11 @@ class ScriptScheduler:
             self.cleanup()
         except Exception:
             pass
+
+
+class ScriptAbortedError(Exception):
+    """脚本被中止（F5 重启等）"""
+    pass
 
 
 class SecurityError(Exception):

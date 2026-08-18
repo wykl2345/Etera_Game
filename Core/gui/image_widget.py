@@ -59,9 +59,10 @@ class ImageWidget(QWidget):
     POSITION_CENTER = "center"
     POSITION_RIGHT = "right"
 
-    def __init__(self, resource_base: Path = None, parent=None):
+    def __init__(self, resource_base: Path = None, resource_manager=None, parent=None):
         super().__init__(parent)
         self._resource_base = resource_base or Path("resources/images")
+        self._resource_manager = resource_manager
 
         self._setup_ui()
         self._image_labels: dict[str, FadeLabel] = {}
@@ -108,29 +109,32 @@ class ImageWidget(QWidget):
         """获取指定位置的容器"""
         return self._position_areas.get(position, self._center_area)
 
-    def _load_pixmap(self, name: str) -> QPixmap | None:
+    def _load_pixmap(self, name: str, target_w: int = 400, target_h: int = 600) -> QPixmap | None:
         """
-        加载图片资源
+        加载图片资源（委托给 ResourceManager）
+
+        如果 ResourceManager 可用，通过其统一接口加载（含缓存）；
+        否则回退到直接文件加载。
 
         Args:
             name: 图片名称（不含路径和后缀）
+            target_w: 目标宽度
+            target_h: 目标高度
 
         Returns:
             QPixmap | None: 加载成功的图片
         """
-        # 尝试多种扩展名
+        if self._resource_manager:
+            return self._resource_manager.load_image(name, target_width=target_w, target_height=target_h)
+
+        # 回退：直接文件加载
         extensions = [".png", ".jpg", ".jpeg", ".webp", ".gif"]
         for ext in extensions:
             path = self._resource_base / f"{name}{ext}"
             if path.exists():
                 pixmap = QPixmap(str(path))
                 if not pixmap.isNull():
-                    # 缩放以适配屏幕
-                    pixmap = pixmap.scaled(
-                        400, 600,
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation
-                    )
+                    pixmap = pixmap.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                     return pixmap
 
         logger.warning(f"图片资源未找到: {name}")
@@ -221,13 +225,22 @@ class ImageWidget(QWidget):
         label = FadeLabel()
         self._character_labels[char_id] = label
 
-        # 角色立绘更大一些
-        scaled_pixmap = pixmap.scaled(
-            300, 500,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
-        label.setPixmap(scaled_pixmap)
+        # 角色立绘用更大的目标尺寸加载
+        if self._resource_manager:
+            char_pixmap = self._resource_manager.load_image(
+                image_name, target_width=300, target_height=500
+            )
+            if not char_pixmap:
+                char_pixmap = self._resource_manager.load_image(
+                    char_id, target_width=300, target_height=500
+                )
+        else:
+            char_pixmap = pixmap.scaled(
+                300, 500,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+        label.setPixmap(char_pixmap or pixmap)
 
         area = self._get_position_area(position)
         area.layout().addWidget(label)

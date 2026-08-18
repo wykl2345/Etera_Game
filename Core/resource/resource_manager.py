@@ -31,6 +31,9 @@ import hashlib
 import time
 from functools import lru_cache
 
+from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt
+
 
 # 配置日志记录器
 logger = logging.getLogger(__name__)
@@ -390,10 +393,62 @@ class ResourceManager:
         self._decrement_ref(key)
 
     def _load_image(self, path: Path) -> Any:
-        """加载图片资源"""
-        # 返回PIL.Image对象或Q pixmap
-        # 这里返回路径，实际使用时再加载
+        """加载图片资源（原始路径版本，供通用 load 方法使用）"""
         return str(path)
+
+    def load_image(
+        self,
+        name: str,
+        use_cache: bool = True,
+        target_width: int = 400,
+        target_height: int = 600
+    ) -> Optional[QPixmap]:
+        """
+        加载图片资源并返回 QPixmap
+
+        在 images 目录下按扩展名探测，加载后缓存。
+        这是 ImageWidget 等显示组件的统一加载入口。
+
+        Args:
+            name: 图片名（不含路径和扩展名）
+            use_cache: 是否使用缓存
+            target_width: 目标宽度（保持宽高比缩放）
+            target_height: 目标高度
+
+        Returns:
+            Optional[QPixmap]: 加载成功返回 QPixmap，失败返回 None
+        """
+        cache_key = f"pixmap:{name}:{target_width}x{target_height}"
+
+        if use_cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        extensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
+        image_dir = self._path_mappings[ResourceType.IMAGE]
+
+        for ext in extensions:
+            path = image_dir / f"{name}{ext}"
+            if path.exists():
+                pixmap = QPixmap(str(path))
+                if not pixmap.isNull():
+                    pixmap = pixmap.scaled(
+                        target_width, target_height,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    if use_cache:
+                        info = ResourceInfo(
+                            path=str(path),
+                            resource_type=ResourceType.IMAGE,
+                            size=path.stat().st_size,
+                        )
+                        self.cache.put(cache_key, pixmap, info)
+                    return pixmap
+
+        logger.warning(f"图片资源未找到: {name}")
+        return None
 
     def _load_audio(self, path: Path) -> Any:
         """加载音频资源"""

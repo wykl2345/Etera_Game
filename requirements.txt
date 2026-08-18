@@ -1,0 +1,10 @@
+# Etera_Game 游戏引擎依赖
+# 安装: pip install -r requirements.txt
+
+PySide6>=6.5.0
+lupa>=1.14
+PyYAML>=6.0
+pygame>=2.5.0
+
+# 开发/测试依赖
+pytest>=7.4.0
