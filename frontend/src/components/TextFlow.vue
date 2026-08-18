@@ -51,8 +51,8 @@ watch(
         showContinue.value = true
       }
     }
-    // 空闲则开始下一段
-    if (activeIdx.value === -1 && confirmed.value < flow.length) {
+    // 空闲且不在等待点击 → 开始下一段
+    if (activeIdx.value === -1 && confirmed.value < flow.length && !showContinue.value) {
       startNext()
     }
     scrollToBottom()
@@ -125,22 +125,22 @@ function onRevealDone(): void {
     activeIdx.value = -1
   }
   scrollToBottom()
-  if (confirmed.value < textFlow.value.length) {
-    if (store.autoAdvance) {
-      // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
+  if (store.autoAdvance) {
+    // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
+    if (confirmed.value < textFlow.value.length) {
       startNext()
-    } else {
-      showContinue.value = true // 有后续行 → 等点击
     }
+    // 无后续行：等新行到达后自动继续（watch 触发 startNext）
+  } else {
+    // 总是等待点击确认（无论后续行是否已到达）——每段一读，点击推进
+    showContinue.value = true
   }
-  // 全部显示完：textIdle=true → 选项/输入框可显示
 }
 
 /** 推进文本（由 GameScreen 点击委托调用） */
 function onAdvance(): void {
   if (showContinue.value) {
-    confirmed.value++
-    activeIdx.value = -1
+    // 确认当前段（confirmed 已在 onRevealDone 计入），开始下一段（若已到达）
     showContinue.value = false
     if (confirmed.value < textFlow.value.length) {
       startNext()
