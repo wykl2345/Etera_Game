@@ -9,3 +9,10 @@ env/
 
 # 忽略 Conda 导出文件（除非你自己想备份环境配置）
 .conda/
+
+# 前端依赖与构建产物
+node_modules/
+dist/
+
+# 运行时数据
+saves/

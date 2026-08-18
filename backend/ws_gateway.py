@@ -85,6 +85,14 @@ async def handle_connection(
             active_game = loop.run_in_executor(
                 executor, bundle.bus.emit, "on_game_start"
             )
+        elif mtype == "game.day_advance":
+            # 日循环：day+1 → on_day_end → on_day_begin（日常事件触发点）
+            def advance() -> None:
+                bundle.ctx.set_day(bundle.ctx.get_day() + 1)
+                bundle.bus.emit("on_day_end")
+                bundle.bus.emit("on_day_begin")
+
+            loop.run_in_executor(executor, advance)
         elif mtype == "choice.made":
             bundle.scheduler.resolve_wait(
                 str(msg.get("requestId", "")),

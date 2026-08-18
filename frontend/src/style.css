@@ -1,0 +1,51 @@
+/* Etera_Game 终端暗色主题 —— ADR-0006：叙事界面终端风 */
+:root {
+  --bg: #0d0f12;
+  --bg-elevated: #161a20;
+  --fg: #d4d4d8;
+  --fg-dim: #8b8f98;
+  --accent: #e8c15a;
+  --accent-dim: #8a7135;
+  --border: #2a2f38;
+  --danger: #e07a6a;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  --font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+/* 文本颜色标签（对齐 DSL.txt TEXT_COLORS） */
+.tc-white { color: #e5e7eb; }
+.tc-red { color: #e07a6a; }
+.tc-green { color: #7fd88f; }
+.tc-blue { color: #7ab8e8; }
+.tc-yellow { color: #e8c15a; }
+.tc-pink { color: #e89ac8; }
+.tc-gray { color: #8b8f98; }
+.tc-cyan { color: #7fd8d4; }
+.tc-orange { color: #e8a15a; }
+.tc-purple { color: #b08ae8; }
+
+/* 通用动画 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

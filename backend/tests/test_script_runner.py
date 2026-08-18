@@ -310,3 +310,38 @@ class TestEndToEnd:
         # 同步触发完成，不应有 ask_choice 消息
         assert not [m for m in output.messages if m["type"] == "ui.ask_choice"]
 
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_coffee_shop_daily_event(self, env):
+        """日常事件：day≥5 + 灵梦好感≥20 → on_day_begin 触发咖啡店 → 选项 → Flag。"""
+        bus, ctx, output = env["bus"], env["ctx"], env["output"]
+        sched = env["scheduler"]
+        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
+        loader.load_all()
+
+        # 满足触发条件
+        ctx.set_day(5)
+        ctx.set_character_relation("reimu", 25)
+
+        def run():
+            bus.emit("on_day_begin")
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        deadline = time.time() + 5
+        choice_msg = None
+        while time.time() < deadline:
+            msgs = [m for m in output.messages if m["type"] == "ui.ask_choice"]
+            if msgs:
+                choice_msg = msgs[-1]
+                break
+            time.sleep(0.05)
+        assert choice_msg is not None, "咖啡店事件未触发"
+        assert choice_msg["payload"]["options"] == ["进去打招呼", "假装没看见"]
+
+        # 选 1：付钱 → 扣钱 + 好感 +5 + met_at_cafe flag
+        sched.resolve_wait(choice_msg["requestId"], choice_index=1)
+        t.join(timeout=5)
+        assert not t.is_alive()
+        assert ctx.get_global_flag("coffee_mod", "met_at_cafe") is True
+        assert ctx.get_character_relation("reimu") == 5  # set_stat 设绝对值
+
