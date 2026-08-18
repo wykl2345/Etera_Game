@@ -69,7 +69,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 | 方向 | 类型 | 示例 |
 |---|---|---|
 | 引擎 → 前端（推送） | `ui.*` 指令、`status.update`、`event.log` | `ui.text`、`ui.show_image`、`status.sync` |
-| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`game.start`、`game.day_advance`、`game.save` |
+| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`minigame.result`、`game.start`、`game.day_advance`、`game.save` |
 
 ### 4.2 消息结构
 
@@ -101,6 +101,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 | `ui.play_music` / `play_sound` | → | `audio.play`（浏览器 WebAudio） |
 | `ui.ask_choice` | 请求-响应 | `ui.ask_choice` ↔ `choice.made` |
 | `ui.ask_input` | 请求-响应 | `ui.ask_input` ↔ `input.submit` |
+| `minigame.start` | 请求-响应 | `minigame.start` ↔ `minigame.result`（结果回传 Lua） |
 | `world.*` / `data.*` | 服务端内部 | 无消息，状态变更后推 `status.sync` |
 | `event.emit` | → | `event.log`（前端日志/调试面板） |
 

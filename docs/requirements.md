@@ -51,7 +51,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | ID | 需求 | 验收标准 |
 |---|---|---|
 | P1-01 | Lua 沙箱：固定 `lupa.lua54`，`register_eval=False`、`register_builtins=False`、内存上限；移除 `os`/`io`/`debug`/`loadfile` 等危险全局；`MockLuaRuntime` 降级方案保留 | 沙箱内无法访问文件系统/网络；lupa 不可用时引擎可降级启动 |
-| P1-02 | API 白名单：**40 指令（实测，非文档原载 37）**（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`）挂起/恢复语义正确 | ✅ 对照 v1 测试思路逐指令验证通过 |
+| P1-02 | API 白名单：**41 指令（实测：40 + minigame.start，见 DSL.txt）**（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`/`minigame.start`）挂起/恢复语义正确 | ✅ 对照 v1 测试思路逐指令验证通过 |
 | P1-03 | 调度器：线程池 + `concurrent.futures.Future` 挂起/恢复（替代 v1 的 Qt 嵌套 QEventLoop；**无 Lua coroutine**，脚本在线程中同步执行） | ✅ 挂起/恢复/中止测试通过 |
 | P1-04 | 事件总线：发布-订阅、同步/异步 emit、优先级、事件过滤、一次性订阅、传播停止（对齐 v1 能力） | v1 事件总线测试思路全部通过 |
 | P1-05 | 状态管理：GameContext 分层命名空间（world/player/characters/global_flags），`core` 命名空间受保护 | 命名空间隔离测试通过；脚本无法写 `core` |
