@@ -1,7 +1,7 @@
 # Etera_Game 重构架构设计 v2 — 前后端分离 + Web 渲染
 
 > 状态: 已定稿 | 技术栈: Python 3.12 (asyncio) + Vue 3 + Vite + WebSocket
-> 关联: `DSL.txt`(37 指令契约) / `docs/requirements.md`(PRD) / `CONTEXT.md`(领域词汇) / v1 文档与源码见 `docs/archive/v1/` 与 git tag `pre-web-refactor`
+> 关联: `DSL.txt`(40 指令契约) / `docs/requirements.md`(PRD) / `CONTEXT.md`(领域词汇) / v1 文档与源码见 `docs/archive/v1/` 与 git tag `pre-web-refactor`
 
 ---
 
@@ -18,7 +18,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 ### 1.2 v2 的目标
 
 1. **前后端分离**：浏览器负责一切渲染与排版，引擎专注游戏逻辑
-2. **内容资产零迁移**：`Data/`（Lua 脚本 + YAML 角色）、`DSL.txt`（37 指令契约）原样复用，Mod 生态不受影响
+2. **内容资产零迁移**：`Data/`（Lua 脚本 + YAML 角色）、`DSL.txt`（40 指令契约）原样复用，Mod 生态不受影响
 3. **性能预留**：未来内嵌小游戏（杀戮尖塔式肉鸽），前端渲染层需支持独立 Canvas 挂载
 4. **上下文友好**：源码删除（git tag `pre-web-refactor` 留档），仓库以文档 + 内容资产为主
 
@@ -51,7 +51,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 │  │ WS 网关（会话管理 / 指令路由 / requestId 匹配）       │  │
 │  └────────────────┬───────────────────────────────────┘  │
 │  ┌────────────────▼───────────────────────────────────┐  │
-│  │ 脚本调度器 (asyncio) ←→ Lua 沙箱 + API Bridge(37)  │  │
+│  │ 脚本调度器 (asyncio) ←→ Lua 沙箱 + API Bridge(40)  │  │
 │  └──────┬────────────────────────┬───────────────────┘  │
 │  事件总线 │        GameContext    │  SaveManager         │
 │         │        (分层命名空间)   │  (版本化 JSON)        │
@@ -91,7 +91,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 
 ### 4.4 完整映射
 
-37 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
+40 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
 
 | Lua API (DSL.txt) | 方向 | WS 消息 |
 |---|---|---|
@@ -110,28 +110,33 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 
 ## 五、后端设计
 
-### 5.1 调度器改造：QEventLoop → asyncio
+### 5.1 调度器改造：QEventLoop → 线程池 + Future
 
-v1 用 Qt 嵌套事件循环暂停/恢复脚本，v2 用 Python 原生协程：
+v1 用 Qt 嵌套事件循环暂停/恢复脚本（**v1 无 Lua coroutine**，脚本由 `lua.execute` 同步执行，挂起全在 Python 侧）。v2 的实际实现（`backend/engine/script_runner.py` + `backend/ws_gateway.py`）：
 
 ```python
-class ScriptScheduler:
-    """脚本调度器 —— 引擎心脏，v1 script_runner.py 的 asyncio 重写"""
+# 脚本在每连接的单 worker 线程池中同步执行（不阻塞 asyncio 主循环）
+executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="game")
+loop.run_in_executor(executor, bundle.bus.emit, "on_game_start")   # 不 await！
 
-    async def ask_choice(self, options: list[str]) -> int:
-        req_id = uuid4().hex
-        self.pending[req_id] = asyncio.get_event_loop().create_future()
-        await self.ws.send({"type": "ui.ask_choice", "requestId": req_id,
-                            "payload": {"options": options}})
-        # 挂起当前脚本协程，直到 WS 网关收到 choice.made 并 set_result
-        return await self.pending[req_id]
+# 阻塞指令（脚本线程内）：发消息 + Future 挂起
+def ask_choice(self, options: list[str]) -> int:
+    req_id = uuid4().hex
+    self._pending[req_id] = Future()
+    self.output.send({"type": "ui.ask_choice", "requestId": req_id,
+                      "payload": {"options": options}})
+    return self._pending[req_id].result()   # 阻塞脚本线程
 
-    def on_choice_made(self, req_id: str, index: int) -> None:
-        if req_id in self.pending:
-            self.pending.pop(req_id).set_result(index)
+# WS 主循环收到 choice.made → 恢复（线程安全）
+def resolve_wait(self, request_id: str, choice_index=None) -> bool:
+    if fut := self._pending.get(request_id):
+        fut.set_result(choice_index)
 ```
 
-Lua 侧桥接：`lupa` 的 Lua coroutine 在 Python 协程中执行，`ui.ask_choice` 触发的 yield 映射为上面的 `await`（v1 已论证 Lua 协程 + Python 调度天然匹配，此设计不变）。
+**关键点（实现中踩过的坑）**：
+- `game.start` 触发**不能 await**（`asyncio.to_thread` 会让消息循环停在 `game.start`，脚本挂起等输入时收不到 `choice.made` → 死锁）。必须 fire-and-forget 提交到 executor。
+- WS 输出用 `asyncio.Queue` + 单一 sender task 串行发送，避免脚本线程并发 send。
+- 每个 WS 连接 = 独立引擎实例（会话隔离，无断线恢复）。
 
 ### 5.2 模块复用清单
 
@@ -140,7 +145,7 @@ Lua 侧桥接：`lupa` 的 Lua coroutine 在 Python 协程中执行，`ui.ask_ch
 | `event_bus.py` | **复用** | 纯逻辑，零 GUI 依赖 |
 | `game_context.py` | **复用** | 分层命名空间状态，序列化不变 |
 | `save_manager.py` | **复用** | 版本化 JSON + 迁移链，存档在服务端 `saves/` |
-| `sandbox.py` / `api_bridge.py` | **改造** | 阻塞 API 改 async，白名单 37 指令不变 |
+| `sandbox.py` / `api_bridge.py` | **改造** | 阻塞 API 改 async，白名单 40 指令不变 |
 | `script_runner.py` | **重写** | 嵌套 QEventLoop → asyncio 协程 |
 | `resource_manager.py` | **改造** | 文件路径 → HTTP 静态资源 URL |
 | `gui/*` (PySide6) | **废弃** | 全部由 Vue 前端替代 |
@@ -208,7 +213,7 @@ v1 的 `push_mode/pop_mode/reset_mode` 思路在 Web 端天然成立，直接用
 ```
 EE1/
 ├── CONTEXT.md                   # 领域词汇表（统一语言）
-├── DSL.txt                      # Mod 契约（37 指令，前后端协议基准）
+├── DSL.txt                      # Mod 契约（40 指令，前后端协议基准）
 ├── backend/                     # Python 游戏逻辑服务
 │   ├── engine/                  # 沙箱/调度/事件/状态（按本文档重写）
 │   ├── ws_gateway.py            # WebSocket 网关
@@ -252,4 +257,5 @@ EE1/
 | 3 | 前端 Vue 3 + Vite | 用户选型；轻量、中文生态好 |
 | 4 | 小游戏走独立 Canvas 层 | 性能硬约束，与主框架解耦 |
 | 5 | 状态在服务端、视图在前端 | 单方向状态流，避免双端状态同步复杂度 |
-| 6 | 协议以 DSL.txt 为基准 | 37 指令不变，Mod 生态零迁移 |
+| 6 | 协议以 DSL.txt 为基准 | 40 指令不变，Mod 生态零迁移 |
+

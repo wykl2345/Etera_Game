@@ -10,7 +10,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 
 1. **前后端分离**：浏览器负责渲染与排版，引擎专注游戏逻辑
 2. **节约 UI 成本 + 现代化**：系统界面（主菜单/设置/存档等）彻底 Web 化重设计
-3. **内容资产零迁移**：37 个 Lua 指令（DSL.txt）语义不变，Mod 生态不受影响
+3. **内容资产零迁移**：40 个 Lua 指令（DSL.txt）语义不变，Mod 生态不受影响
 
 ---
 
@@ -18,8 +18,8 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 
 | | 范围 |
 |---|---|
-| **Phase 1** | 后端引擎核心重写 + WS 网关（不含存档，见 §5.6） |
-| **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 |
+| **Phase 1** | 后端引擎核心重写 + WS 网关（不含存档，见 §5.6） | ✅ 已完成（commit 3a828d8） |
+| **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 | ⏳ 进行中 |
 | 范围外 | 存档系统、状态栏打磨、设置/调试面板、小游戏（Phase 3-4） |
 
 ---
@@ -29,7 +29,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | # | 约束 | 等级 |
 |---|---|---|
 | NFR-1 | **上下文友好**：代码与文档保持轻量，避免大文件 | 软 |
-| NFR-2 | **Mod 兼容**：37 个 Lua 指令语义与 v1 完全一致，DSL.txt 不变更 | **硬** |
+| NFR-2 | **Mod 兼容**：40 个 Lua 指令语义与 v1 完全一致，DSL.txt 不变更 | **硬** |
 | NFR-3 | **协议一致性**：WS 消息结构有单一事实来源（TS 类型 + Python 侧校验），防两端漂移 | **硬** |
 | NFR-4 | **性能**：文本冒险 UI 无感知延迟；小游戏 Canvas 独立渲染（60fps） | 软 |
 | NFR-5 | **可测试性**：引擎核心无 GUI 依赖，全部可单测 | 软 |
@@ -49,8 +49,8 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | ID | 需求 | 验收标准 |
 |---|---|---|
 | P1-01 | Lua 沙箱：固定 `lupa.lua54`，`register_eval=False`、`register_builtins=False`、内存上限；移除 `os`/`io`/`debug`/`loadfile` 等危险全局；`MockLuaRuntime` 降级方案保留 | 沙箱内无法访问文件系统/网络；lupa 不可用时引擎可降级启动 |
-| P1-02 | API 白名单：37 指令（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`）挂起/恢复语义正确 | 对照 DSL.txt 逐指令测试通过；复用 v1 测试思路（`git show pre-web-refactor:tests/`） |
-| P1-03 | 调度器：asyncio 协程调度（`loop.create_future()` + `await`），替代 v1 的 Qt 嵌套 QEventLoop；Lua 协程经 `lua_func.coroutine()` 桥接 | 剧本执行中 `ask_choice` 挂起、前端回传后恢复，顺序正确 |
+| P1-02 | API 白名单：**40 指令（实测，非文档原载 37）**（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`）挂起/恢复语义正确 | ✅ 对照 v1 测试思路逐指令验证通过 |
+| P1-03 | 调度器：线程池 + `concurrent.futures.Future` 挂起/恢复（替代 v1 的 Qt 嵌套 QEventLoop；**无 Lua coroutine**，脚本在线程中同步执行） | ✅ 挂起/恢复/中止测试通过 |
 | P1-04 | 事件总线：发布-订阅、同步/异步 emit、优先级、事件过滤、一次性订阅、传播停止（对齐 v1 能力） | v1 事件总线测试思路全部通过 |
 | P1-05 | 状态管理：GameContext 分层命名空间（world/player/characters/global_flags），`core` 命名空间受保护 | 命名空间隔离测试通过；脚本无法写 `core` |
 | P1-06 | 角色模型：YAML 加载（reimu/marisa），与 v1 数据格式兼容 | `Data/characters/*.yaml` 原样加载 |
@@ -65,7 +65,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 
 | ID | 需求 | 验收标准 |
 |---|---|---|
-| P1-08 | WebSocket 网关（`websockets>=14`，新版 asyncio API：`from websockets.asyncio.server import serve`，单参数回调）：引擎 → 前端推送 `ui.*` 指令；前端 → 引擎 `choice.made`/`input.submit`；阻塞指令带 `requestId` | 握手、消息路由、`requestId` 匹配正确；v1 37 指令 → WS 消息映射见 `docs/architecture.md` §4 |
+| P1-08 | WebSocket 网关（`websockets>=14`，新版 asyncio API：`from websockets.asyncio.server import serve`，单参数回调）：引擎 → 前端推送 `ui.*` 指令；前端 → 引擎 `choice.made`/`input.submit`；阻塞指令带 `requestId` | 握手、消息路由、`requestId` 匹配正确；v1 40 指令 → WS 消息映射见 `docs/architecture.md` §4 |
 | P1-09 | 会话模型：单连接单会话，**无断线恢复**（断线即结束本局）；存档服务端化（Phase 3 落地） | 断线后服务端会话清理，无泄漏 |
 | P1-10 | 静态资源服务：`resources/` 经 HTTP 提供给前端（立绘/背景/音频 URL），资源缺失返回占位 | 前端可按 URL 加载图片；缺失资源不崩溃 |
 
@@ -75,11 +75,12 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 |---|---|---|
 | P1-11 | 目录结构 `backend/engine/` + `ws_gateway.py` + `main.py`；依赖 `lupa==2.8`、`websockets>=14`、`PyYAML` | `python backend/main.py` 启动服务；单元测试通过 |
 
-### 5.5 Phase 1 验收
+### 5.5 Phase 1 验收（✅ 已完成）
 
-- 引擎核心 5 模块单元测试全部通过（复用 v1 测试思路）
-- `python backend/main.py` 启动，WS 握手成功
-- 静态资源 HTTP 可达
+- ✅ 引擎核心 5 模块单元测试全部通过（**88 项全绿**，复用 v1 测试思路）
+- ✅ `python backend/main.py` 启动，WS 握手成功（HTTP 101）
+- ✅ 静态资源 HTTP 可达（缺失资源返回 404 不崩溃）
+- ✅ 端到端：加载 3 剧本 → 触发 `on_game_start` → 序章挂起等选项 → `choice.made` 恢复 → Flag/好感度生效
 
 ### 5.6 明确推迟（Phase 3）
 
@@ -136,3 +137,4 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 - 断线恢复/会话暂存（体验优化）
 - 小游戏（杀戮尖塔式肉鸽）：独立 Canvas 层（ADR-0005）
 - 音频（WebAudio）：v1 定义了 API 但无实现，Phase 3+ 评估
+
