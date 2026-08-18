@@ -68,8 +68,46 @@ async function run() {
     console.log('✓ 已回应日常事件选项')
   }
 
+  // 5. 状态推送（status.sync）：写操作后应有状态快照
+  await sleep(300)
+  const statusMsgs = messages.filter((m) => m.type === 'status.sync')
+  console.log(`✓ status.sync 收到 ${statusMsgs.length} 条`)
+  if (statusMsgs.length === 0) throw new Error('未收到状态推送')
+  const lastStatus = statusMsgs[statusMsgs.length - 1].payload
+  console.log(`✓ 状态: 第 ${lastStatus.day} 天 / ${lastStatus.location} / 金钱 ${lastStatus.player.money}`)
+
+  // 6. 存档链路：list → save → 再次 list → load
+  ws.send(JSON.stringify({ type: 'game.list_saves' }))
+  await sleep(400)
+  const listMsgs = messages.filter((m) => m.type === 'saves.list')
+  console.log(`✓ saves.list 收到 ${listMsgs.length} 次，槽位数: ${listMsgs.at(-1)?.payload?.slots?.length ?? 0}`)
+
+  ws.send(JSON.stringify({ type: 'game.save', payload: { slot_id: 3, description: '联调测试' } }))
+  await sleep(500)
+  const saveOk = messages.filter((m) => m.type === 'save.result').at(-1)?.payload?.ok
+  console.log('✓ game.save → save.result:', saveOk)
+  if (!saveOk) throw new Error('保存失败')
+
+  // 读档后状态应还原
+  ws.send(JSON.stringify({ type: 'game.list_saves' }))
+  await sleep(400)
+  const slot3 = messages.filter((m) => m.type === 'saves.list').at(-1)?.payload?.slots?.find((s) => s.slot_id === 3)
+  console.log(`✓ 槽位 3: exists=${slot3?.exists} day=${slot3?.metadata?.day}`)
+
+  ws.send(JSON.stringify({ type: 'game.load', payload: { slot_id: 3 } }))
+  await sleep(500)
+  const loadOk = messages.filter((m) => m.type === 'load.result').at(-1)?.payload?.ok
+  console.log('✓ game.load → load.result:', loadOk)
+  if (!loadOk) throw new Error('读档失败')
+
+  // 7. 快速存档
+  ws.send(JSON.stringify({ type: 'game.quick_save' }))
+  await sleep(400)
+  const quickOk = messages.filter((m) => m.type === 'save.result' && m.payload?.quick).at(-1)?.payload?.ok
+  console.log('✓ quick_save:', quickOk)
+
   ws.close()
-  console.log('\n=== 联调验收通过 ===')
+  console.log('\n=== Phase 3 联调验收通过 ===')
 }
 
 run().catch((e) => {

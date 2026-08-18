@@ -30,6 +30,7 @@ class EngineBundle:
     api: LuaAPI
     output: UIOutput
     character_model: CharacterModel
+    save_manager: Any = None
 
 
 def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
@@ -47,6 +48,7 @@ def init_engine(
     output: UIOutput,
     scripts_dir: Any = "data/scenarios",
     characters_dir: Any = "data/characters",
+    saves_dir: Any = "saves",
     debug_mode: bool = False,
 ) -> EngineBundle:
     """构建完整引擎（不含 WS/网络，output 由调用方注入）。"""
@@ -65,8 +67,12 @@ def init_engine(
     loaded = loader.load_all()
     logger.info("剧本已注册: %s", loaded)
 
+    from engine.save_manager import SaveManager
+
+    save_manager = SaveManager(bus, ctx, base_dir=Path(saves_dir))
+
     return EngineBundle(
         bus=bus, ctx=ctx, sandbox=sandbox,
         scheduler=scheduler, api=api, output=output,
-        character_model=cm,
+        character_model=cm, save_manager=save_manager,
     )

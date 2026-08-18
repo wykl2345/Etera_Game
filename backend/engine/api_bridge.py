@@ -104,6 +104,29 @@ class LuaAPI:
             },
         }
 
+    # ── 状态推送（写操作后调用，前端 StatusBar 订阅）────────────
+    def _push_status(self) -> None:
+        try:
+            stats = self._ctx.get_player("stats")
+            status = {
+                "day": self._ctx.get_day(),
+                "time_of_day": self._ctx.get_time_of_day().value,
+                "location": self._ctx.get_location(),
+                "player": {
+                    "hp": stats.hp, "max_hp": stats.max_hp,
+                    "mp": stats.mp, "max_mp": stats.max_mp,
+                    "stamina": stats.stamina, "max_stamina": stats.max_stamina,
+                    "money": stats.money, "level": stats.level,
+                },
+                "characters": {
+                    cid: {"name": ch.name, "relation": ch.relation}
+                    for cid, ch in self._ctx.get_all_characters().items()
+                },
+            }
+            self._scheduler.output.send({"type": "status.sync", "payload": status})
+        except Exception:  # noqa: BLE001 - 状态推送失败不影响游戏逻辑
+            logger.debug("status.sync 推送失败", exc_info=True)
+
     # ══════════════════ ui.（13）══════════════════════
     def _ui_text(self, text: str, color: Optional[str] = None, bold: bool = False) -> None:
         if color is not None and color not in TEXT_COLORS:
@@ -197,6 +220,7 @@ class LuaAPI:
             else:
                 self._ctx.set_character_stat(target, stat_name, value)
         self._bus.emit("on_character_stat_changed", target=target, stat=stat_name, value=value)
+        self._push_status()
         return True
 
     def _data_get_stat(self, target: str, stat_name: str, default: int = 0) -> int:
@@ -217,6 +241,7 @@ class LuaAPI:
             return False
         self._ctx.set_character_relation(target, int(value))
         self._bus.emit("on_character_relation_changed", target=target, value=int(value))
+        self._push_status()
         return True
 
     def _data_modify_relation(self, target: str, delta: int) -> int:
@@ -225,6 +250,7 @@ class LuaAPI:
             return 0
         new_value = self._ctx.modify_character_relation(target, int(delta))
         self._bus.emit("on_character_relation_changed", target=target, value=new_value)
+        self._push_status()
         return new_value
 
     def _data_get_flag(self, namespace: str, key: str, default: Any = None) -> Any:
@@ -255,10 +281,16 @@ class LuaAPI:
         return self._ctx.get_inventory().to_dict()
 
     def _data_add_item(self, item_id: str, count: int = 1) -> bool:
-        return self._ctx.add_item(str(item_id), int(count))
+        ok = self._ctx.add_item(str(item_id), int(count))
+        if ok:
+            self._push_status()
+        return ok
 
     def _data_remove_item(self, item_id: str, count: int = 1) -> bool:
-        return self._ctx.remove_item(str(item_id), int(count))
+        ok = self._ctx.remove_item(str(item_id), int(count))
+        if ok:
+            self._push_status()
+        return ok
 
     def _data_get_item_count(self, item_id: str) -> int:
         return self._ctx.get_item_count(str(item_id))
@@ -304,15 +336,18 @@ class LuaAPI:
     def _world_set_day(self, day: int) -> None:
         if int(day) >= 1:
             self._ctx.set_day(int(day))
+            self._push_status()
 
     def _world_get_time(self) -> str:
         return self._ctx.get_time_of_day().value
 
     def _world_set_time(self, time_str: str) -> None:
         self._ctx.set_time_of_day(str(time_str))
+        self._push_status()
 
     def _world_get_location(self) -> str:
         return self._ctx.get_location()
 
     def _world_set_location(self, location: str) -> None:
         self._ctx.set_location(str(location))
+        self._push_status()

@@ -46,6 +46,24 @@ async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
             return
 
 
+def _send_saves_list(bundle: Any, output: UIOutput) -> None:
+    """推送存档槽位列表（saves.list）。"""
+    slots = []
+    for s in bundle.save_manager.get_save_slots():
+        meta = None
+        if s.metadata is not None:
+            meta = {
+                "version": s.metadata.version,
+                "save_time": s.metadata.save_time,
+                "day": s.metadata.day,
+                "location": s.metadata.location,
+                "description": s.metadata.description,
+                "playtime": s.metadata.playtime,
+            }
+        slots.append({"slot_id": s.slot_id, "exists": s.exists, "metadata": meta})
+    output.send({"type": "saves.list", "payload": {"slots": slots}})
+
+
 async def handle_connection(
     websocket: Any,
     scripts_dir: str,
@@ -91,8 +109,33 @@ async def handle_connection(
                 bundle.ctx.set_day(bundle.ctx.get_day() + 1)
                 bundle.bus.emit("on_day_end")
                 bundle.bus.emit("on_day_begin")
+                bundle.api._push_status()
 
             loop.run_in_executor(executor, advance)
+        elif mtype == "game.save":
+            slot_id = int(payload.get("slot_id", 0))
+            ok = bundle.save_manager.save(
+                slot_id, description=str(payload.get("description", ""))
+            )
+            output.send({"type": "save.result", "payload": {"ok": ok, "slot_id": slot_id}})
+            _send_saves_list(bundle, output)
+        elif mtype == "game.load":
+            slot_id = int(payload.get("slot_id", 0))
+            ok = bundle.save_manager.load(slot_id)
+            output.send({"type": "load.result", "payload": {"ok": ok, "slot_id": slot_id}})
+            if ok:
+                bundle.api._push_status()
+        elif mtype == "game.quick_save":
+            ok = bundle.save_manager.quick_save()
+            output.send({"type": "save.result", "payload": {"ok": ok, "slot_id": 0, "quick": True}})
+            _send_saves_list(bundle, output)
+        elif mtype == "game.quick_load":
+            ok = bundle.save_manager.quick_load()
+            output.send({"type": "load.result", "payload": {"ok": ok, "slot_id": 0, "quick": True}})
+            if ok:
+                bundle.api._push_status()
+        elif mtype == "game.list_saves":
+            _send_saves_list(bundle, output)
         elif mtype == "choice.made":
             bundle.scheduler.resolve_wait(
                 str(msg.get("requestId", "")),
