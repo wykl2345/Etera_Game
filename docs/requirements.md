@@ -21,6 +21,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | **Phase 1** | 后端引擎核心重写 + WS 网关（不含存档，见 §5.6） | ✅ 已完成（commit 3a828d8） |
 | **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 | ✅ 已完成（commit 9c62de2） |
 | **Phase 3** | 状态栏/立绘/背景/存档界面（模式栈落地） | ✅ 已完成（commit 3ed2335） |
+| **Phase 4** | 打磨：逐字打印/设置面板/音频 + 小游戏 Canvas 实验 | ✅ 已完成（commit 25acf53） |
 | 范围外 | 存档系统、状态栏打磨、设置/调试面板、小游戏（Phase 3-4） |
 
 ---
@@ -138,6 +139,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 ## 8. 未来方向（记录，不承诺）
 
 - 断线恢复/会话暂存（体验优化）
-- 小游戏（杀戮尖塔式肉鸽）：独立 Canvas 层（ADR-0005）
-- 音频（WebAudio）：v1 定义了 API 但无实现，Phase 3+ 评估
+- 小游戏（杀戮尖塔式肉鸽）：独立 Canvas 层（ADR-0005）——**Phase 4 已实现原型**：`frontend/src/games/SlimeBattle.vue`（回合制卡牌，纯 Canvas 2D + rAF，与主框架解耦）
+- 音频（WebAudio）：**Phase 4 已实现**（`frontend/src/audio.ts`，处理 audio.* 消息，无素材静默）
+- 设置面板：**Phase 4 已实现**（`frontend/src/stores/settings.ts` localStorage 持久化：文字速度/逐字开关/字号/音量）
 

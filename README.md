@@ -42,5 +42,6 @@ cd frontend && npm install && npm run dev   # Phase 2 后可用
 - ✅ **Phase 1 后端引擎完成**：沙箱(lupa54)/API 白名单(40)/调度器/事件总线/状态/剧本加载 + WS 网关，88 测试全绿（commit 3a828d8）
 - ✅ **Phase 2 最小前端完成**：Vue3+TS（主菜单/文本流/选项/立绘背景/输入），3 剧本全跑 + 日常事件循环，联调验收通过（commit 9c62de2）
 - ✅ **Phase 3 完成**：存档系统（迁移链/备份/20 槽）+ 状态栏（status.sync）+ 存档界面 + UI 模式栈（commit 3ed2335）
-- ⏳ Phase 4：打磨（逐字打印/主题/设置面板）+ 小游戏 Canvas 实验
+- ✅ **Phase 4 完成**：逐字打印 + 设置面板 + WebAudio 音频 + 小游戏 Canvas 原型（史莱姆回合制，commit 25acf53）
+- 🎯 路线图 4 个 Phase 全部完成，进入内容创作阶段（Lua 剧本 / 美术素材）
 
