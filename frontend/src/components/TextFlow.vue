@@ -119,20 +119,21 @@ function printing(): void {
 
 /** 当前段逐字打印完成 */
 function onRevealDone(): void {
+  // 当前段（activeIdx）已完整显示 → 计入 confirmed（否则 displayText 会隐藏它）
+  if (activeIdx.value >= 0) {
+    confirmed.value = Math.max(confirmed.value, activeIdx.value + 1)
+    activeIdx.value = -1
+  }
   scrollToBottom()
-  if (confirmed.value + 1 < textFlow.value.length) {
+  if (confirmed.value < textFlow.value.length) {
     if (store.autoAdvance) {
       // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
-      confirmed.value++
-      activeIdx.value = -1
       startNext()
     } else {
       showContinue.value = true // 有后续行 → 等点击
     }
-  } else {
-    // 无后续行：文本静止 → textIdle=true → 选项/输入框可显示
-    activeIdx.value = -1
   }
+  // 全部显示完：textIdle=true → 选项/输入框可显示
 }
 
 /** 推进文本（由 GameScreen 点击委托调用） */
