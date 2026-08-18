@@ -5,9 +5,11 @@
  * - 三张手牌：攻击 / 防御 / 治疗
  */
 import { onMounted, onUnmounted, ref } from 'vue'
-import { useGameStore } from '../stores/game'
 
-const store = useGameStore()
+const emit = defineEmits<{
+  finish: [result: { won: boolean; score: number; cancelled?: boolean }]
+}>()
+
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const showResult = ref<'won' | 'lost' | null>(null)
 
@@ -226,7 +228,13 @@ function reset(): void {
 }
 
 function exit(): void {
-  store.closeMenu()
+  // 中途退出：按未完成处理（cancelled）
+  emit('finish', { won: false, score: 0, cancelled: true })
+}
+
+function finish(): void {
+  const won = showResult.value === 'won'
+  emit('finish', { won, score: won ? state.player.hp : 0 })
 }
 
 // ── 生命周期 ────────────────────────────────────
@@ -278,7 +286,7 @@ onUnmounted(() => {
         <p>{{ showResult === 'won' ? '你击败了史莱姆！' : '史莱姆太强了，再试一次？' }}</p>
         <div class="btns">
           <button class="btn" @click="reset">再来一次</button>
-          <button class="btn primary" @click="exit">返回</button>
+          <button class="btn primary" @click="finish">返回</button>
         </div>
       </div>
     </Transition>

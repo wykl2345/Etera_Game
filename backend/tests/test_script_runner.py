@@ -163,6 +163,28 @@ class TestScheduler:
         assert sched._resolve_script_path("../secret.lua") is None
         assert sched._resolve_script_path("../../etc/passwd") is None
 
+    def test_ask_minigame_hangs_and_resolves(self, env):
+        sched = env["scheduler"]
+        output = env["output"]
+        result = {}
+
+        def call():
+            result["value"] = sched.ask_minigame("slime_battle", {"hp": 30})
+
+        t = threading.Thread(target=call, daemon=True)
+        t.start()
+        deadline = time.time() + 2
+        while time.time() < deadline and not sched.is_waiting():
+            time.sleep(0.02)
+        assert sched.is_waiting()
+        msg = [m for m in output.messages if m["type"] == "minigame.start"][-1]
+        assert msg["payload"]["game_id"] == "slime_battle"
+        assert msg["payload"]["options"] == {"hp": 30}
+        sched.resolve_wait(msg["requestId"], result={"won": True, "score": 50})
+        t.join(timeout=2)
+        assert result["value"] == {"won": True, "score": 50}
+        assert not sched.is_waiting()
+
     def test_run_script_sync_missing_file(self, env):
         assert env["scheduler"].run_script_sync("no_such.lua") is False
 
@@ -309,6 +331,36 @@ class TestEndToEnd:
         bus.emit("on_game_start")
         # 同步触发完成，不应有 ask_choice 消息
         assert not [m for m in output.messages if m["type"] == "ui.ask_choice"]
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_minigame_from_lua(self, env):
+        """DSL 链路：Lua 调 minigame.start → 挂起 → 结果回传 → Lua 恢复拿到结果。"""
+        sandbox, sched, output = env["sandbox"], env["scheduler"], env["output"]
+        result = {}
+        code = """
+        local r = minigame.start("slime_battle", {hp = 30})
+        return r.won
+        """
+
+        def run():
+            result["value"] = sandbox.execute(code)
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        deadline = time.time() + 3
+        msg = None
+        while time.time() < deadline:
+            msgs = [m for m in output.messages if m["type"] == "minigame.start"]
+            if msgs:
+                msg = msgs[-1]
+                break
+            time.sleep(0.05)
+        assert msg is not None, "Lua 未触发 minigame.start"
+        assert msg["payload"]["game_id"] == "slime_battle"
+        assert msg["payload"]["options"] == {"hp": 30}
+        sched.resolve_wait(msg["requestId"], result={"won": True, "score": 50})
+        t.join(timeout=3)
+        assert result["value"] is True  # Lua 端 r.won == true
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_coffee_shop_daily_event(self, env):

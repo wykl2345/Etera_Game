@@ -68,6 +68,8 @@ export interface InputRequest {
 
 interface GameState {
   uiMode: UiMode
+  /** UI 模式栈（v1 PRD push_mode/pop_mode 语义）：子界面返回上一模式 */
+  modeStack: UiMode[]
   wsUrl: string
   connected: boolean
   textFlow: TextLine[]
@@ -79,6 +81,8 @@ interface GameState {
   status: StatusData | null
   saves: SaveSlotInfo[]
   toast: string | null
+  /** 当前小游戏（DSL 触发带 requestId 回传；主菜单测试入口无 requestId） */
+  activeMinigame: { gameId: string; requestId: string | null } | null
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -86,6 +90,7 @@ const DEFAULT_WS = 'ws://127.0.0.1:8765'
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
     uiMode: 'main_menu',
+    modeStack: [],
     wsUrl: DEFAULT_WS,
     connected: false,
     textFlow: [],
@@ -97,6 +102,7 @@ export const useGameStore = defineStore('game', {
     status: null,
     saves: [],
     toast: null,
+    activeMinigame: null,
   }),
 
   actions: {
@@ -184,6 +190,12 @@ export const useGameStore = defineStore('game', {
           this.showToast('读档失败')
         }
       })
+      // 小游戏触发（DSL minigame.start）：进入 minigame 模式
+      wsClient.on('minigame.start', (m) => {
+        const p = (m.payload ?? {}) as { game_id?: string }
+        this.pushMode('minigame')
+        this.activeMinigame = { gameId: p.game_id ?? '', requestId: m.requestId ?? null }
+      })
     },
 
     showToast(message: string): void {
@@ -204,32 +216,61 @@ export const useGameStore = defineStore('game', {
       wsClient.send({ type: 'game.start' })
     },
 
-    /** 返回主菜单 */
+    /** 返回主菜单（清栈） */
     backToMenu(): void {
       this.uiMode = 'main_menu'
+      this.modeStack = []
+    },
+
+    /** ── UI 模式栈（push/pop，子界面返回上一模式）────────── */
+    pushMode(mode: UiMode): void {
+      this.modeStack.push(this.uiMode)
+      this.uiMode = mode
+    },
+
+    popMode(): void {
+      this.uiMode = this.modeStack.pop() ?? 'game'
     },
 
     /** ── 存档界面（模式栈：save/load）────────────────── */
     openSave(): void {
-      this.uiMode = 'save'
+      this.pushMode('save')
       wsClient.send({ type: 'game.list_saves' })
     },
 
     openLoad(): void {
-      this.uiMode = 'load'
+      this.pushMode('load')
       wsClient.send({ type: 'game.list_saves' })
     },
 
     closeMenu(): void {
-      this.uiMode = 'game'
+      this.popMode()
     },
 
     openSettings(): void {
-      this.uiMode = 'settings'
+      this.pushMode('settings')
     },
 
     openMinigame(): void {
-      this.uiMode = 'minigame'
+      // 主菜单测试入口（无 requestId，结果不回传脚本）
+      this.pushMode('minigame')
+      this.activeMinigame = { gameId: 'slime_battle', requestId: null }
+    },
+
+    /** 小游戏结束：回传结果给后端（DSL 触发时）并返回上一模式 */
+    finishMinigame(result: Record<string, unknown>): void {
+      const mg = this.activeMinigame
+      if (mg?.requestId) {
+        wsClient.send({
+          type: 'minigame.result',
+          requestId: mg.requestId,
+          payload: { result },
+        })
+      } else {
+        this.showToast(result.won ? '小游戏胜利！' : '小游戏结束')
+      }
+      this.activeMinigame = null
+      this.popMode()
     },
 
     saveToSlot(slotId: number): void {

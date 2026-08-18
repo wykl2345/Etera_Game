@@ -130,12 +130,34 @@ class ScriptScheduler:
             raise ScriptAbortedError("脚本被中止")
         return str(result) if result is not None else default
 
+    def ask_minigame(self, game_id: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """触发小游戏（阻塞）：发 minigame.start 挂起脚本，等前端回传结果。"""
+        req_id = uuid.uuid4().hex
+        fut: Future = Future()
+        with self._lock:
+            self._pending[req_id] = fut
+            self._state = ScriptState.WAITING_INPUT
+        self.output.send(
+            {"type": "minigame.start", "requestId": req_id,
+             "payload": {"game_id": game_id, "options": options or {}}}
+        )
+        try:
+            result = fut.result()
+        finally:
+            with self._lock:
+                self._pending.pop(req_id, None)
+                self._state = ScriptState.RUNNING
+        if self._aborted:
+            raise ScriptAbortedError("脚本被中止")
+        return result if isinstance(result, dict) else {"won": False}
+
     # ── 恢复（WS 主循环调用，线程安全）────────────────────────
     def resolve_wait(
         self,
         request_id: str,
         choice_index: Optional[int] = None,
         input_text: Optional[str] = None,
+        result: Optional[Dict[str, Any]] = None,
     ) -> bool:
         with self._lock:
             fut = self._pending.get(request_id)
@@ -143,6 +165,8 @@ class ScriptScheduler:
             return False
         if input_text is not None:
             fut.set_result(input_text)
+        elif result is not None:
+            fut.set_result(result)
         else:
             fut.set_result(choice_index)
         return True

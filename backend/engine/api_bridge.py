@@ -32,6 +32,17 @@ def _to_list(value: Any) -> List[Any]:
         return [value]
 
 
+def _to_dict(value: Any) -> Dict[str, Any]:
+    """LuaTable / dict → dict。lupa LuaTable 键值经 keys()/values() 取。"""
+    if isinstance(value, dict):
+        return dict(value)
+    keys = getattr(value, "keys", None)
+    values = getattr(value, "values", None)
+    if callable(keys) and callable(values):
+        return {str(k): v for k, v in zip(list(keys()), list(values()))}
+    return {}
+
+
 class LuaAPI:
     """构建注入 Lua 全局的五组 API 表：{ui, data, event, util, world}。"""
 
@@ -86,6 +97,9 @@ class LuaAPI:
                 "emit": self._event_emit,
                 "after_days": self._event_after_days,
                 "listen": self._event_listen,
+            },
+            "minigame": {
+                "start": self._minigame_start,
             },
             "util": {
                 "random": self._util_random,
@@ -307,6 +321,15 @@ class LuaAPI:
 
     def _event_listen(self, event_name: str, handler: Callable) -> None:
         self._bus.subscribe(str(event_name), handler)
+
+    # ══════════════════ minigame.（1）══════════════════════
+    def _minigame_start(self, game_id: str, options: Any = None) -> Dict[str, Any]:
+        """触发小游戏（阻塞）：脚本挂起，等前端回传结果后恢复。
+
+        返回 Lua table：{ won, score, ... }（由小游戏实现决定）。
+        """
+        opts = _to_dict(options)
+        return self._scheduler.ask_minigame(str(game_id), opts)
 
     # ══════════════════ util.（5）══════════════════════
     def _util_random(self) -> float:

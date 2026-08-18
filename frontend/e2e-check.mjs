@@ -1,6 +1,6 @@
 // Etera_Game 前后端联调验收脚本（模拟浏览器 WS 行为）
 // 流程：game.start → 序章挂起 → choice.made(2) → 收结尾文本 → day_advance 验证日常事件机制
-const WS_URL = 'ws://127.0.0.1:8799'
+const WS_URL = 'ws://127.0.0.1:8765'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -68,6 +68,24 @@ async function run() {
     console.log('✓ 已回应日常事件选项')
   }
 
+  // 4.5 小游戏触发链路：minigame_demo 剧本（on_day_begin 触发 minigame.start）
+  const mgStart = messages.filter((m) => m.type === 'minigame.start').at(-1)
+  if (mgStart) {
+    console.log('✓ DSL 触发小游戏:', mgStart.payload.game_id, '| 选项:', JSON.stringify(mgStart.payload.options))
+    ws.send(JSON.stringify({
+      type: 'minigame.result',
+      requestId: mgStart.requestId,
+      payload: { result: { won: true, score: 20 } },
+    }))
+    await sleep(600)
+    const afterMg = messages.slice(before).filter((m) => m.type === 'ui.text').map((m) => m.payload.text)
+    const hasReward = afterMg.some((t) => t.includes('奖励'))
+    console.log('✓ 小游戏结果回传后脚本恢复，奖励文本:', hasReward)
+    if (!hasReward) throw new Error('小游戏结果未正确回传脚本')
+  } else {
+    console.log('ℹ 未检测到小游戏触发（随机/条件未命中，后端单测已覆盖）')
+  }
+
   // 5. 状态推送（status.sync）：写操作后应有状态快照
   await sleep(300)
   const statusMsgs = messages.filter((m) => m.type === 'status.sync')
@@ -111,6 +129,6 @@ async function run() {
 }
 
 run().catch((e) => {
-  console.error('✗ 联调失败:', e.message)
+  console.error('✗ 联调失败:', e?.message ?? String(e), '\n', e?.stack ?? '')
   process.exit(1)
 })

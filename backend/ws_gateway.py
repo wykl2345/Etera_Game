@@ -152,6 +152,12 @@ async def handle_connection(
                 str(msg.get("requestId", "")),
                 input_text=payload.get("text"),
             )
+        elif mtype == "minigame.result":
+            # 小游戏结果回传：恢复挂起的 minigame.start 协程
+            bundle.scheduler.resolve_wait(
+                str(msg.get("requestId", "")),
+                result=payload.get("result") if isinstance(payload.get("result"), dict) else {},
+            )
         else:
             logger.debug("未处理消息类型: %s", mtype)
 
