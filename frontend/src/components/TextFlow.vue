@@ -24,6 +24,7 @@ async function scrollToBottom(): Promise<void> {
 }
 
 // ── 逐字打印驱动 ─────────────────────────────────
+// 注意：textFlow.push 不改变数组引用，watch 必须 deep 才会触发
 watch(
   textFlow,
   (flow) => {
@@ -31,10 +32,11 @@ watch(
     scrollToBottom()
     if (!printing.value) startPrinting()
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 )
 
 function startPrinting(): void {
+  cancelAnimationFrame(rafId) // 防重复启动叠加 rAF 循环
   if (!typewriterEnabled.value) {
     revealed.value = textFlow.value.map((l) => l.text.length)
     return

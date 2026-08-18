@@ -303,7 +303,9 @@ class TestEndToEnd:
                 break
             time.sleep(0.05)
         assert choice_msg is not None, "脚本未发出选项（挂起失败）"
-        assert choice_msg["payload"]["options"] == ["去村里转转", "在神社帮忙", "去魔法森林探险"]
+        assert choice_msg["payload"]["options"] == [
+            "去村里转转", "在神社帮忙", "去魔法森林探险", "帮灵梦清理异变",
+        ]
 
         # 选 2：在神社帮忙 → first_choice=shrine, reimu 好感 +3
         sched.resolve_wait(choice_msg["requestId"], choice_index=2)
@@ -363,6 +365,49 @@ class TestEndToEnd:
         assert result["value"] is True  # Lua 端 r.won == true
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_intro_exorcism_choice_plays_minigame(self, env):
+        """序章第 4 选项：帮灵梦清理异变 → minigame.start → 结果回传 → 好感/金钱。"""
+        bus, ctx, output = env["bus"], env["ctx"], env["output"]
+        sched = env["scheduler"]
+        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
+        loader.load_all()
+
+        t = threading.Thread(target=lambda: bus.emit("on_game_start"), daemon=True)
+        t.start()
+        deadline = time.time() + 8
+        choice_msg = None
+        while time.time() < deadline:
+            msgs = [m for m in output.messages if m["type"] == "ui.ask_choice"]
+            if msgs:
+                choice_msg = msgs[-1]
+                break
+            time.sleep(0.05)
+        assert choice_msg is not None
+
+        # 选 4：帮灵梦清理异变
+        sched.resolve_wait(choice_msg["requestId"], choice_index=4)
+
+        # 等待 minigame.start 出现（脚本挂起等小游戏结果）
+        deadline = time.time() + 5
+        mg_msg = None
+        while time.time() < deadline:
+            msgs = [m for m in output.messages if m["type"] == "minigame.start"]
+            if msgs:
+                mg_msg = msgs[-1]
+                break
+            time.sleep(0.05)
+        assert mg_msg is not None, "第 4 选项未触发小游戏"
+        assert mg_msg["payload"]["game_id"] == "slime_battle"
+
+        # 回传胜利结果 → 脚本继续 → 好感 +10
+        sched.resolve_wait(mg_msg["requestId"], result={"won": True, "score": 25})
+        t.join(timeout=5)
+        assert not t.is_alive()
+        assert ctx.get_global_flag("story", "first_choice") == "exorcism"
+        assert ctx.get_character_relation("reimu") == 10
+        assert ctx.get_player_stat("money") == 25
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_coffee_shop_daily_event(self, env):
         """日常事件：day≥5 + 灵梦好感≥20 → on_day_begin 触发咖啡店 → 选项 → Flag。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
@@ -373,6 +418,8 @@ class TestEndToEnd:
         # 满足触发条件
         ctx.set_day(5)
         ctx.set_character_relation("reimu", 25)
+        # 阻止其他 on_day_begin 剧本干扰（minigame_demo 会卡在 minigame.start）
+        ctx.set_global_flag("demo", "minigame_done", True)
 
         def run():
             bus.emit("on_day_begin")

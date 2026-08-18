@@ -24,7 +24,7 @@ return {
         ui.text("灵梦：来杯茶，发发呆，一天就过去了。", "pink")
 
         -- 玩家选项
-        local choice = ui.ask_choice({"去村里转转", "在神社帮忙", "去魔法森林探险"})
+        local choice = ui.ask_choice({"去村里转转", "在神社帮忙", "去魔法森林探险", "帮灵梦清理异变"})
 
         if choice == 1 then
             ui.text("你决定去村里的市集看看。", "white")
@@ -33,9 +33,27 @@ return {
             ui.text("你决定帮灵梦打扫神社。", "white")
             data.set_flag("story", "first_choice", "shrine")
             data.set_stat("reimu", "relation", 3)
-        else
+        elseif choice == 3 then
             ui.text("你决定去魔法森林探险。", "white")
             data.set_flag("story", "first_choice", "forest")
+        else
+            -- 选择 4：帮灵梦清理异变 → 史莱姆战斗小游戏
+            ui.text("灵梦：诶？你要帮忙吗？", "pink")
+            ui.text("灵梦：太好了！森林里的妖怪最近很不安分……", "pink")
+            util.sleep(0.5)
+            ui.text("灵梦：那就拜托你了！", "pink")
+            ui.show_character("reimu", "happy", "right")
+
+            local result = minigame.start("slime_battle", { hp = 40 })
+            if result.won then
+                ui.text("灵梦：太厉害了！一下子就把它们打跑了！", "pink")
+                data.set_flag("story", "first_choice", "exorcism")
+                data.modify_relation("reimu", 10)
+                data.set_stat("player", "money", result.score or 20)
+            else
+                ui.text("灵梦：没事没事，妖怪们只是闹着玩的。", "pink")
+                data.set_flag("story", "first_choice", "exorcism_failed")
+            end
         end
 
         ui.text("新的旅程开始了……", "yellow", true)
