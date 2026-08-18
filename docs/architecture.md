@@ -69,7 +69,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 | 方向 | 类型 | 示例 |
 |---|---|---|
 | 引擎 → 前端（推送） | `ui.*` 指令、`status.update`、`event.log` | `ui.text`、`ui.show_image`、`status.sync` |
-| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`game.start`、`game.save` |
+| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`game.start`、`game.day_advance`、`game.save` |
 
 ### 4.2 消息结构
 

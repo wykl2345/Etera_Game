@@ -19,7 +19,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | | 范围 |
 |---|---|
 | **Phase 1** | 后端引擎核心重写 + WS 网关（不含存档，见 §5.6） | ✅ 已完成（commit 3a828d8） |
-| **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 | ⏳ 进行中 |
+| **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 | ✅ 已完成（commit 9c62de2） |
 | 范围外 | 存档系统、状态栏打磨、设置/调试面板、小游戏（Phase 3-4） |
 
 ---
@@ -113,11 +113,11 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 |---|---|---|
 | P2-07 | 主菜单 `MainMenu`：**现代化 Web 风格**（大标题 + 卡片式选项，CSS 渐变过渡，不依赖美术资源），选项：开始新游戏 / 继续（占位）/ 设置（占位）/ 退出 | 视觉现代化；"开始新游戏"触发 `game.start`，进入叙事界面 |
 
-### 6.4 Phase 2 验收（总验收线）
+### 6.4 Phase 2 验收（✅ 已完成）
 
-- **3 个剧本全部可玩**：`story/intro.lua`（序章，主路径+选项+Flag）、`daily/coffee_shop.lua`（事件总线触发+好感度）、`daily/marisa_mushroom.lua`（全 API 覆盖+随机）
-- 日常事件循环验证：`on_day_begin` 触发咖啡店/蘑菇事件
-- 浏览器完整跑通：主菜单 → 新游戏 → 序章 → 选项 → Flag 设置 → 日常事件触发
+- ✅ **3 个剧本全部可玩**：`story/intro.lua`（序章，前端联调：挂起→选择→分支→立绘/背景）、`daily/coffee_shop.lua`（后端端到端：好感≥20+day≥5 → 选项 → met_at_cafe flag）、`daily/marisa_mushroom.lua`（前端联调：day_advance 触发 → 3 选项）
+- ✅ 日常事件循环：新增 `game.day_advance` 协议消息（day+1 → on_day_end → on_day_begin）
+- ✅ 浏览器完整链路：主菜单 → 新游戏 → 序章 → 选项 → Flag 设置 → 日常事件触发（Node e2e 脚本验证 + `npm run build` 通过）
 
 ---
 

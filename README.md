@@ -40,5 +40,6 @@ cd frontend && npm install && npm run dev   # Phase 2 后可用
 - ✅ 环境迁移 WSL（Ubuntu 24.04.1，系统已更新）
 - ✅ 文档体系 v2 定稿（架构/PRD/参考/ADR/词汇表）
 - ✅ **Phase 1 后端引擎完成**：沙箱(lupa54)/API 白名单(40)/调度器/事件总线/状态/剧本加载 + WS 网关，88 测试全绿（commit 3a828d8）
-- ⏳ Phase 2 最小前端（Vue3 + TS，3 剧本全跑）
+- ✅ **Phase 2 最小前端完成**：Vue3+TS（主菜单/文本流/选项/立绘背景/输入），3 剧本全跑 + 日常事件循环，联调验收通过（commit 9c62de2）
+- ⏳ Phase 3：状态栏/存档/系统界面完善（模式栈落地）
 
