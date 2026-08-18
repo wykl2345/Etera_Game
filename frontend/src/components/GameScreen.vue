@@ -32,6 +32,7 @@ const { uiMode, toast } = storeToRefs(store)
       <button class="tool-btn" @click="store.openSave">保存</button>
       <button class="tool-btn" @click="store.openLoad">读取</button>
       <button class="tool-btn" @click="store.quickSave" title="快速存档">快存</button>
+      <button class="tool-btn" @click="store.quickLoad" title="快速读取">快读</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
     </div>
 

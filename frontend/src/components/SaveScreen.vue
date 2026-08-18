@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore, type SaveSlotInfo } from '../stores/game'
 
@@ -9,7 +10,50 @@ defineProps<{
 const store = useGameStore()
 const { saves } = storeToRefs(store)
 
+// ── 拖拽滚动（替代默认的文本选择）────────────────
+const slotsEl = ref<HTMLElement | null>(null)
+const dragging = ref(false)
+let dragStartY = 0
+let dragStartScrollTop = 0
+let movedByDrag = false
+
+function onMouseDown(e: MouseEvent): void {
+  const el = slotsEl.value
+  if (!el) return
+  // 仅左键
+  if (e.button !== 0) return
+  dragStartY = e.clientY
+  dragStartScrollTop = el.scrollTop
+  movedByDrag = false
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+}
+
+function onMouseMove(e: MouseEvent): void {
+  const el = slotsEl.value
+  if (!el) return
+  const dy = e.clientY - dragStartY
+  if (!movedByDrag && Math.abs(dy) > 5) {
+    movedByDrag = true
+    dragging.value = true
+  }
+  if (movedByDrag) {
+    el.scrollTop = dragStartScrollTop - dy
+  }
+}
+
+function onMouseUp(): void {
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp)
+  dragging.value = false
+}
+
 function onSlot(slot: SaveSlotInfo): void {
+  // 拖拽过的鼠标抬起不触发点击
+  if (movedByDrag) {
+    movedByDrag = false
+    return
+  }
   if (store.uiMode === 'save') {
     store.saveToSlot(slot.slot_id)
   } else {
@@ -31,7 +75,12 @@ function formatTime(t: string | undefined): string {
     <div class="panel">
       <h2 class="title">{{ mode === 'save' ? '保存游戏' : '读取存档' }}</h2>
 
-      <div class="slots">
+      <div
+        ref="slotsEl"
+        class="slots"
+        :class="{ dragging }"
+        @mousedown="onMouseDown"
+      >
         <div
           v-for="slot in saves"
           :key="slot.slot_id"
@@ -52,7 +101,6 @@ function formatTime(t: string | undefined): string {
       </div>
 
       <div class="footer">
-        <button class="btn" @click="store.quickSave">快速保存</button>
         <button class="btn" @click="store.closeMenu">返回</button>
       </div>
     </div>
@@ -93,10 +141,42 @@ function formatTime(t: string | undefined): string {
 
 .slots {
   overflow-y: auto;
+  overflow-x: hidden; /* 禁止横向滚动条 */
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  user-select: none; /* 拖拽滚动而非选择文字 */
+  cursor: grab;
+}
+
+.slots.dragging {
+  cursor: grabbing;
+}
+
+/* 拖拽时禁止槽位 hover 位移，避免抖动 */
+.slots.dragging .slot:hover {
+  transform: none;
+  border-color: var(--border);
+}
+
+/* 自定义滚动条：透明背景 + 中间细线（不出现白色/粗轨道） */
+.slots::-webkit-scrollbar {
+  width: 4px;
+}
+.slots::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slots::-webkit-scrollbar-thumb {
+  background: rgba(139, 143, 152, 0.35);
+  border-radius: 2px;
+}
+.slots::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 143, 152, 0.6);
+}
+.slots {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 143, 152, 0.35) transparent;
 }
 
 .slot {

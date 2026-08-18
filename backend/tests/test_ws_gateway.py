@@ -79,6 +79,44 @@ def test_full_flow_over_websocket():
     asyncio.run(_run_full_flow())
 
 
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_restart_game_resets_state():
+    """同一连接两次 game.start：第二次仍触发序章（状态必须重置）。"""
+
+    async def _run():
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        async def handler(ws):
+            await handle_connection(ws, str(SCRIPTS_DIR), str(CHARACTERS_DIR))
+
+        server = await serve(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        task = asyncio.create_task(server.serve_forever())
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                # 第一次：完整跑完序章（intro_completed 置位）
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice1 = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                await ws.send(json.dumps({
+                    "type": "choice.made", "requestId": choice1["requestId"],
+                    "payload": {"index": 1},
+                }))
+                await _collect(ws, 1.2)  # 等序章收尾
+
+                # 第二次：必须再次触发序章（reset_game 清除了 flag）
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice2 = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                assert choice2 is not None, "第二次 game.start 未触发序章（状态未重置）"
+                assert choice2["payload"]["options"][0] == "去村里转转"
+        finally:
+            server.close()
+            await server.wait_closed()
+            task.cancel()
+
+    asyncio.run(_run())
+
+
 def test_static_server_404_on_empty_dir(tmp_path):
     """静态资源服务：空目录请求返回 404（不崩溃）。"""
     from main import start_static_server

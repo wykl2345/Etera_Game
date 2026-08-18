@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 
 const store = useGameStore()
-const { connected } = storeToRefs(store)
+const { connected, saves } = storeToRefs(store)
+
+/** 有任意槽位存档时"继续游戏"可点 */
+const hasSave = computed(() => saves.value.some((s) => s.exists))
 
 function onStart(): void {
   store.startGame()
+}
+
+function onContinue(): void {
+  store.openLoad()
 }
 
 function quit(): void {
@@ -24,8 +32,8 @@ function quit(): void {
 
     <nav class="menu">
       <button class="menu-btn primary" @click="onStart">开始新游戏</button>
-      <button class="menu-btn" disabled title="Phase 3 实现">继续游戏</button>
-      <button class="menu-btn" disabled title="Phase 3 实现">设置</button>
+      <button class="menu-btn" :disabled="!hasSave" @click="onContinue">继续游戏</button>
+      <button class="menu-btn" disabled title="Phase 4 实现">设置</button>
       <button class="menu-btn" @click="quit">退出</button>
     </nav>
 

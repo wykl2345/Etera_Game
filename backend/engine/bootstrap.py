@@ -44,6 +44,18 @@ def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
             ctx.set_character_flag(data["id"], key, value)
 
 
+def reset_game(bundle: "EngineBundle") -> None:
+    """开始新游戏：重置全部状态 + 重载角色 + 解除中止标志。
+
+    单连接可能多次 game.start，必须重置否则 flag 残留导致剧本不再触发。
+    """
+    bundle.scheduler.stop_all()  # 中止上一局残留的挂起脚本（若有）
+    bundle.ctx.reset()
+    _apply_characters(bundle.ctx, bundle.character_model)
+    bundle.scheduler.reset_abort()
+    logger.info("新游戏：状态已重置")
+
+
 def init_engine(
     output: UIOutput,
     scripts_dir: Any = "data/scenarios",

@@ -62,6 +62,7 @@ def main() -> None:
             host=args.host, port=args.port,
             scripts_dir=str(root / args.scripts_dir),
             characters_dir=str(root / args.characters_dir),
+            saves_dir=str(root / "saves"),
             debug_mode=args.debug,
         ))
     except KeyboardInterrupt:

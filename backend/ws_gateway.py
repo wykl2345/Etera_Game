@@ -68,6 +68,7 @@ async def handle_connection(
     websocket: Any,
     scripts_dir: str,
     characters_dir: str,
+    saves_dir: str = "saves",
     debug_mode: bool = False,
 ) -> None:
     """单个 WS 连接的会话生命周期。"""
@@ -79,7 +80,8 @@ async def handle_connection(
 
     # 每连接独立引擎实例（会话隔离）
     bundle = init_engine(output, scripts_dir=scripts_dir,
-                         characters_dir=characters_dir, debug_mode=debug_mode)
+                         characters_dir=characters_dir, saves_dir=saves_dir,
+                         debug_mode=debug_mode)
 
     # 每连接专属游戏线程池（单 worker）：脚本执行不可阻塞消息循环。
     # 关键：不 await —— 脚本会在 ask_choice 挂起等待输入，主循环必须继续
@@ -97,12 +99,14 @@ async def handle_connection(
         payload = msg.get("payload") or {}
 
         if mtype == "game.start":
-            if active_game is not None and not active_game.done():
-                logger.warning("已有进行中的游戏会话，忽略重复 game.start")
-                continue
-            active_game = loop.run_in_executor(
-                executor, bundle.bus.emit, "on_game_start"
-            )
+            # 总是硬重置：reset_game 内部 stop_all 中止上一局挂起脚本
+            from engine.bootstrap import reset_game
+
+            def start_new() -> None:
+                reset_game(bundle)
+                bundle.bus.emit("on_game_start")
+
+            active_game = loop.run_in_executor(executor, start_new)
         elif mtype == "game.day_advance":
             # 日循环：day+1 → on_day_end → on_day_begin（日常事件触发点）
             def advance() -> None:
@@ -125,6 +129,8 @@ async def handle_connection(
             output.send({"type": "load.result", "payload": {"ok": ok, "slot_id": slot_id}})
             if ok:
                 bundle.api._push_status()
+                # 触发 on_load 系统事件：剧本可监听恢复剧情
+                loop.run_in_executor(executor, bundle.bus.emit, "on_load")
         elif mtype == "game.quick_save":
             ok = bundle.save_manager.quick_save()
             output.send({"type": "save.result", "payload": {"ok": ok, "slot_id": 0, "quick": True}})
@@ -164,6 +170,7 @@ async def serve(
     port: int = 8765,
     scripts_dir: str = "data/scenarios",
     characters_dir: str = "data/characters",
+    saves_dir: str = "saves",
     debug_mode: bool = False,
 ) -> None:
     """启动 WS 服务（websockets>=14 新版 asyncio API）。"""
@@ -172,7 +179,8 @@ async def serve(
     async def handler(websocket: Any) -> None:
         await handle_connection(
             websocket, scripts_dir=scripts_dir,
-            characters_dir=characters_dir, debug_mode=debug_mode,
+            characters_dir=characters_dir, saves_dir=saves_dir,
+            debug_mode=debug_mode,
         )
 
     async with ws_serve(handler, host, port) as server:

@@ -104,6 +104,8 @@ export const useGameStore = defineStore('game', {
     connect(): void {
       wsClient.connect(this.wsUrl).then(() => {
         this.connected = true
+        // 拉取存档列表（主菜单"继续游戏"可用性判断）
+        wsClient.send({ type: 'game.list_saves' })
       }).catch((e) => {
         console.error('[store] 连接失败', e)
         this.connected = false
