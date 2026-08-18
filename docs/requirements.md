@@ -20,6 +20,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 |---|---|
 | **Phase 1** | 后端引擎核心重写 + WS 网关（不含存档，见 §5.6） | ✅ 已完成（commit 3a828d8） |
 | **Phase 2** | 最小前端（Vue3 + TS）+ 完整跑通仓库 3 个剧本 | ✅ 已完成（commit 9c62de2） |
+| **Phase 3** | 状态栏/立绘/背景/存档界面（模式栈落地） | ✅ 已完成（commit 3ed2335） |
 | 范围外 | 存档系统、状态栏打磨、设置/调试面板、小游戏（Phase 3-4） |
 
 ---
@@ -82,9 +83,11 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 - ✅ 静态资源 HTTP 可达（缺失资源返回 404 不崩溃）
 - ✅ 端到端：加载 3 剧本 → 触发 `on_game_start` → 序章挂起等选项 → `choice.made` 恢复 → Flag/好感度生效
 
-### 5.6 明确推迟（Phase 3）
+### 5.6 存档系统（✅ Phase 3 已完成）
 
-- 存档系统（版本化 JSON + 迁移链 + 备份）→ Phase 3 与存档界面一并验收
+- ✅ SaveManager v2（`backend/engine/save_manager.py`）：版本化 JSON（2.0.0）+ 迁移链（1.0→1.1→1.2→1.3→2.0.0，load 后写回）+ 原子写入 + 自动备份（≤5）+ 20 槽位 + 槽 0 快速存档
+- ✅ 协议：`game.save/load/quick_save/quick_load/list_saves` → `save.result/load.result/saves.list`
+- ✅ `status.sync` 推送：api_bridge 写操作后自动推全量快照（状态栏数据源）
 - 断线恢复/会话暂存 → 未来评估（体验优化，已记录意图）
 
 ---
