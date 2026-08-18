@@ -10,7 +10,8 @@ function posClass(position: string): string {
 }
 
 function imageUrl(charId: string, expression: string): string {
-  return `${ASSET_BASE}/images/characters/${charId}_${expression}.png`
+  // 规范目录结构：resources/images/characters/{id}/{expression}.png
+  return `${ASSET_BASE}/images/characters/${charId}/${expression}.png`
 }
 </script>
 
