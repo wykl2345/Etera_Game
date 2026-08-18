@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 
 const store = useGameStore()
-const { choice } = storeToRefs(store)
+const { choice, textIdle } = storeToRefs(store)
 
 function pick(index: number): void {
   store.choose(index)
@@ -11,7 +11,8 @@ function pick(index: number): void {
 </script>
 
 <template>
-  <div v-if="choice" class="choice-menu">
+  <!-- 选项只在文本区空闲时出现（对话看完才弹选项） -->
+  <div v-if="choice && textIdle" class="choice-menu">
     <button
       v-for="(option, i) in choice.options"
       :key="i"

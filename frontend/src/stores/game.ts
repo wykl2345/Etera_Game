@@ -83,6 +83,8 @@ interface GameState {
   toast: string | null
   /** 当前小游戏（DSL 触发带 requestId 回传；主菜单测试入口无 requestId） */
   activeMinigame: { gameId: string; requestId: string | null } | null
+  /** 文本区是否空闲（无打印、无待确认段落）——选项/输入框只在空闲时出现 */
+  textIdle: boolean
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -103,6 +105,7 @@ export const useGameStore = defineStore('game', {
     saves: [],
     toast: null,
     activeMinigame: null,
+    textIdle: true,
   }),
 
   actions: {

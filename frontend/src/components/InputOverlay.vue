@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 
 const store = useGameStore()
-const { input } = storeToRefs(store)
+const { input, textIdle } = storeToRefs(store)
 const value = ref('')
 
 watch(input, (req) => {
@@ -17,7 +17,7 @@ function submit(): void {
 </script>
 
 <template>
-  <div v-if="input" class="input-overlay">
+  <div v-if="input && textIdle" class="input-overlay">
     <div class="input-box">
       <p class="prompt">{{ input.prompt }}</p>
       <div class="row">

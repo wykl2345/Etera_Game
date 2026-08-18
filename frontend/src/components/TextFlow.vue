@@ -29,10 +29,20 @@ async function scrollToBottom(): Promise<void> {
   }
 }
 
-// ── 段落推进：新行到达 ─────────────────────────────
+// ── 段落推进：新行到达 / 清空 ───────────────────────
 watch(
   textFlow,
   (flow) => {
+    if (!flow.length) {
+      // ui.clear：重置段落状态
+      confirmed.value = 0
+      activeIdx.value = -1
+      revealed.value = []
+      showContinue.value = false
+      cancelAnimationFrame(rafId)
+      store.textIdle = true
+      return
+    }
     while (revealed.value.length < flow.length) revealed.value.push(0)
     // 当前段已打印完且后续行已到 → 显示 ▼（等点击）
     if (activeIdx.value >= 0 && confirmed.value + 1 < flow.length) {
@@ -48,6 +58,15 @@ watch(
     scrollToBottom()
   },
   { immediate: true, deep: true },
+)
+
+// 文本区空闲状态：无打印中、无待确认段落 → 选项/输入框可显示
+watch(
+  [confirmed, activeIdx, showContinue, () => textFlow.value.length],
+  () => {
+    store.textIdle = activeIdx.value === -1 && !showContinue.value
+  },
+  { immediate: true },
 )
 
 /** 开始逐字打印第 confirmed 段 */
