@@ -16,7 +16,8 @@ const { uiMode, toast } = storeToRefs(store)
 </script>
 
 <template>
-  <div class="game-screen">
+  <!-- 点击委托：背景/文本区点击推进文本；交互组件用 .stop 防冒泡 -->
+  <div class="game-screen" @click="store.advanceText()">
     <!-- 模式栈：状态栏仅 game 模式显示（ADR-0006 / v1 PRD 规则） -->
     <StatusBar v-if="uiMode === 'game'" />
 
@@ -30,7 +31,7 @@ const { uiMode, toast } = storeToRefs(store)
     </div>
 
     <!-- 底部工具条（系统界面，Web 化） -->
-    <div v-if="uiMode === 'game'" class="toolbar">
+    <div v-if="uiMode === 'game'" class="toolbar" @click.stop>
       <button class="tool-btn" @click="store.openSave">保存</button>
       <button class="tool-btn" @click="store.openLoad">读取</button>
       <button class="tool-btn" @click="store.quickSave" title="快速存档">快存</button>

@@ -9,7 +9,7 @@ const { textSpeed, typewriterEnabled, fontSize, musicVolume } = storeToRefs(sett
 </script>
 
 <template>
-  <div class="settings-screen">
+  <div class="settings-screen" @click.stop>
     <div class="panel">
       <h2 class="title">设置</h2>
 

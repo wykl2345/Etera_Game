@@ -85,6 +85,8 @@ interface GameState {
   activeMinigame: { gameId: string; requestId: string | null } | null
   /** 文本区是否空闲（无打印、无待确认段落）——选项/输入框只在空闲时出现 */
   textIdle: boolean
+  /** 文本推进信号（GameScreen 点击委托递增，TextFlow 监听推进段落） */
+  textAdvanceTick: number
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -106,6 +108,7 @@ export const useGameStore = defineStore('game', {
     toast: null,
     activeMinigame: null,
     textIdle: true,
+    textAdvanceTick: 0,
   }),
 
   actions: {
@@ -219,10 +222,11 @@ export const useGameStore = defineStore('game', {
       wsClient.send({ type: 'game.start' })
     },
 
-    /** 返回主菜单（清栈） */
+    /** 返回主菜单（清栈 + 通知后端中止挂起脚本，释放游戏线程） */
     backToMenu(): void {
       this.uiMode = 'main_menu'
       this.modeStack = []
+      wsClient.send({ type: 'game.abort' })
     },
 
     /** ── UI 模式栈（push/pop，子界面返回上一模式）────────── */
@@ -302,6 +306,11 @@ export const useGameStore = defineStore('game', {
     deleteSave(slotId: number): void {
       wsClient.send({ type: 'game.delete_save', payload: { slot_id: slotId } })
       this.showToast('存档已删除')
+    },
+
+    /** 玩家点击游戏画面：推进文本（背景/文本区委托） */
+    advanceText(): void {
+      this.textAdvanceTick++
     },
 
     /** 玩家选择选项（1-based index） */

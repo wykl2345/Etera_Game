@@ -21,7 +21,7 @@ function onFinish(result: Record<string, unknown>): void {
 </script>
 
 <template>
-  <component v-if="def" :is="def.component" @finish="onFinish" />
+  <component v-if="def" :is="def.component" @finish="onFinish" @click.stop />
   <div v-else class="missing">
     <p>未找到小游戏：{{ activeMinigame?.gameId }}</p>
     <button class="btn" @click="store.popMode()">返回</button>

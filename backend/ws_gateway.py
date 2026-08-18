@@ -107,6 +107,10 @@ async def handle_connection(
                 bundle.bus.emit("on_game_start")
 
             active_game = loop.run_in_executor(executor, start_new)
+        elif mtype == "game.abort":
+            # 返回主菜单：中止挂起脚本，释放单 worker executor（否则下次 game.start 排队卡死）
+            bundle.scheduler.stop_all()
+            bundle.scheduler.reset_abort()
         elif mtype == "game.day_advance":
             # 日循环：day+1 → on_day_end → on_day_begin（日常事件触发点）
             def advance() -> None:

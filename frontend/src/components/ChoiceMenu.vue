@@ -11,8 +11,8 @@ function pick(index: number): void {
 </script>
 
 <template>
-  <!-- 选项只在文本区空闲时出现（对话看完才弹选项） -->
-  <div v-if="choice && textIdle" class="choice-menu">
+  <!-- 选项只在文本区空闲时出现（对话看完才弹选项）；.stop 防止点击选项冒泡推进文本 -->
+  <div v-if="choice && textIdle" class="choice-menu" @click.stop>
     <button
       v-for="(option, i) in choice.options"
       :key="i"

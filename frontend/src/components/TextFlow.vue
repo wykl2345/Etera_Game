@@ -120,14 +120,16 @@ function printing(): void {
 /** 当前段逐字打印完成 */
 function onRevealDone(): void {
   scrollToBottom()
-  // 有后续行 → 等点击；无 → 等脚本继续发
   if (confirmed.value + 1 < textFlow.value.length) {
-    showContinue.value = true
+    showContinue.value = true // 有后续行 → 等点击
+  } else {
+    // 无后续行：文本静止 → textIdle=true → 选项/输入框可显示
+    activeIdx.value = -1
   }
 }
 
-/** 点击文本区：打印中 → 快进当前段；已打印完 → 确认并推进下一段 */
-function onTextClick(): void {
+/** 推进文本（由 GameScreen 点击委托调用） */
+function onAdvance(): void {
   if (showContinue.value) {
     confirmed.value++
     activeIdx.value = -1
@@ -146,6 +148,14 @@ function onTextClick(): void {
     onRevealDone()
   }
 }
+
+// GameScreen 点击委托 → 推进文本（背景/文本区均可点击）
+watch(
+  () => store.textAdvanceTick,
+  () => {
+    if (store.textAdvanceTick > 0) onAdvance()
+  },
+)
 
 function displayText(line: { text: string }, i: number): string {
   if (i < activeIdx.value || (i === activeIdx.value && activeIdx.value >= 0)) {
@@ -169,12 +179,8 @@ onUnmounted(() => cancelAnimationFrame(rafId))
 </script>
 
 <template>
-  <div
-    ref="scrollBox"
-    class="text-flow"
-    :class="fontSize"
-    @click="onTextClick"
-  >
+  <!-- 点击推进由 GameScreen 根容器委托（背景/文本区均可点击） -->
+  <div ref="scrollBox" class="text-flow" :class="fontSize">
     <p
       v-for="(line, i) in textFlow"
       :key="i"

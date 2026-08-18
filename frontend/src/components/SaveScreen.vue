@@ -86,7 +86,7 @@ function doDelete(): void {
 </script>
 
 <template>
-  <div class="save-screen">
+  <div class="save-screen" @click.stop>
     <div class="panel">
       <h2 class="title">{{ mode === 'save' ? '保存游戏' : '读取存档' }}</h2>
 

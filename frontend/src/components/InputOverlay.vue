@@ -17,7 +17,7 @@ function submit(): void {
 </script>
 
 <template>
-  <div v-if="input && textIdle" class="input-overlay">
+  <div v-if="input && textIdle" class="input-overlay" @click.stop>
     <div class="input-box">
       <p class="prompt">{{ input.prompt }}</p>
       <div class="row">

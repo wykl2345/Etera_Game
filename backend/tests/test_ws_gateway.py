@@ -117,6 +117,43 @@ def test_restart_game_resets_state():
     asyncio.run(_run())
 
 
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_abort_frees_game_thread():
+    """挂起中返回主菜单（game.abort）→ 再次 game.start 必须能跑（executor 释放）。"""
+
+    async def _run():
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        async def handler(ws):
+            await handle_connection(ws, str(SCRIPTS_DIR), str(CHARACTERS_DIR))
+
+        server = await serve(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        task = asyncio.create_task(server.serve_forever())
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                # 第一次 start → 序章挂起在 ask_choice
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                assert choice is not None
+
+                # 挂起中 abort（模拟回主菜单）→ 释放游戏线程
+                await ws.send(json.dumps({"type": "game.abort"}))
+                await asyncio.sleep(0.3)
+
+                # 再次 start → 必须能触发序章（未被旧任务卡死）
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice2 = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                assert choice2 is not None, "abort 后 game.start 未触发（executor 被占用）"
+        finally:
+            server.close()
+            await server.wait_closed()
+            task.cancel()
+
+    asyncio.run(_run())
+
+
 def test_static_server_404_on_empty_dir(tmp_path):
     """静态资源服务：空目录请求返回 404（不崩溃）。"""
     from main import start_static_server
