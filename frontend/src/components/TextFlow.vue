@@ -10,12 +10,18 @@ const { textFlow } = storeToRefs(store)
 const { typewriterEnabled, textSpeed, fontSize } = storeToRefs(settings)
 
 const scrollBox = ref<HTMLElement | null>(null)
+
+/** 已确认显示的段落数（整段完整显示过） */
+const confirmed = ref(0)
+/** 当前逐字打印中的行 index（-1 = 无） */
+const activeIdx = ref(-1)
 /** 每行已显示的字数 */
 const revealed = ref<number[]>([])
-const printing = ref(false)
+/** 是否显示"▼ 点击继续" */
+const showContinue = ref(false)
+
 let rafId = 0
 
-// ── 自动滚动（新行到达 / 行开始打印时）──────────────
 async function scrollToBottom(): Promise<void> {
   await nextTick()
   if (scrollBox.value) {
@@ -23,25 +29,45 @@ async function scrollToBottom(): Promise<void> {
   }
 }
 
-// ── 逐字打印驱动 ─────────────────────────────────
-// 注意：textFlow.push 不改变数组引用，watch 必须 deep 才会触发
+// ── 段落推进：新行到达 ─────────────────────────────
 watch(
   textFlow,
   (flow) => {
     while (revealed.value.length < flow.length) revealed.value.push(0)
+    // 当前段已打印完且后续行已到 → 显示 ▼（等点击）
+    if (activeIdx.value >= 0 && confirmed.value + 1 < flow.length) {
+      const line = flow[activeIdx.value]
+      if (revealed.value[activeIdx.value] >= (line?.text.length ?? 0)) {
+        showContinue.value = true
+      }
+    }
+    // 空闲则开始下一段
+    if (activeIdx.value === -1 && confirmed.value < flow.length) {
+      startNext()
+    }
     scrollToBottom()
-    if (!printing.value) startPrinting()
   },
   { immediate: true, deep: true },
 )
 
-function startPrinting(): void {
-  cancelAnimationFrame(rafId) // 防重复启动叠加 rAF 循环
-  if (!typewriterEnabled.value) {
-    revealed.value = textFlow.value.map((l) => l.text.length)
+/** 开始逐字打印第 confirmed 段 */
+function startNext(): void {
+  if (confirmed.value >= textFlow.value.length) {
+    activeIdx.value = -1
     return
   }
-  printing.value = true
+  activeIdx.value = confirmed.value
+  showContinue.value = false
+  if (!typewriterEnabled.value) {
+    revealed.value[activeIdx.value] = textFlow.value[activeIdx.value].text.length
+    onRevealDone()
+    return
+  }
+  printing()
+}
+
+function printing(): void {
+  cancelAnimationFrame(rafId)
   let acc = 0
   let last = performance.now()
   const step = () => Math.max(1, textSpeed.value)
@@ -54,9 +80,16 @@ function startPrinting(): void {
     while (acc >= step() && guard < 200) {
       acc -= step()
       guard++
-      if (!revealNext()) {
+      const idx = activeIdx.value
+      const line = textFlow.value[idx]
+      if (idx < 0 || !line) {
         cancelAnimationFrame(rafId)
-        printing.value = false
+        return
+      }
+      revealed.value[idx]++
+      if (revealed.value[idx] >= line.text.length) {
+        cancelAnimationFrame(rafId)
+        onRevealDone()
         return
       }
     }
@@ -65,44 +98,51 @@ function startPrinting(): void {
   rafId = requestAnimationFrame(tick)
 }
 
-function revealNext(): boolean {
-  for (let i = 0; i < revealed.value.length; i++) {
-    const line = textFlow.value[i]
-    if (!line) continue
-    if (revealed.value[i] < line.text.length) {
-      const wasEmpty = revealed.value[i] === 0
-      revealed.value[i]++
-      if (wasEmpty) scrollToBottom() // 新行开始时滚动一次
-      return true
-    }
+/** 当前段逐字打印完成 */
+function onRevealDone(): void {
+  scrollToBottom()
+  // 有后续行 → 等点击；无 → 等脚本继续发
+  if (confirmed.value + 1 < textFlow.value.length) {
+    showContinue.value = true
   }
-  return false
 }
 
-/** 点击快进：当前行立即显示完整 */
-function skip(): void {
-  if (!printing.value) return
-  for (let i = 0; i < revealed.value.length; i++) {
-    const line = textFlow.value[i]
-    if (revealed.value[i] < line.text.length) {
-      revealed.value[i] = line.text.length
-      return
+/** 点击文本区：打印中 → 快进当前段；已打印完 → 确认并推进下一段 */
+function onTextClick(): void {
+  if (showContinue.value) {
+    confirmed.value++
+    activeIdx.value = -1
+    showContinue.value = false
+    if (confirmed.value < textFlow.value.length) {
+      startNext()
     }
+    return
+  }
+  const idx = activeIdx.value
+  const line = textFlow.value[idx]
+  if (idx >= 0 && line && revealed.value[idx] < line.text.length) {
+    // 快进当前段
+    revealed.value[idx] = line.text.length
+    cancelAnimationFrame(rafId)
+    onRevealDone()
   }
 }
 
 function displayText(line: { text: string }, i: number): string {
-  const count = revealed.value[i] ?? 0
-  return line.text.slice(0, count)
+  if (i < activeIdx.value || (i === activeIdx.value && activeIdx.value >= 0)) {
+    return line.text.slice(0, revealed.value[i] ?? line.text.length)
+  }
+  if (i < confirmed.value) {
+    return line.text
+  }
+  return ''
 }
 
 watch(typewriterEnabled, () => {
-  if (!typewriterEnabled.value) {
-    revealed.value = textFlow.value.map((l) => l.text.length)
+  if (activeIdx.value >= 0) {
+    revealed.value[activeIdx.value] = textFlow.value[activeIdx.value]?.text.length ?? 0
     cancelAnimationFrame(rafId)
-    printing.value = false
-  } else if (revealed.value.some((c, i) => c < (textFlow.value[i]?.text.length ?? 0))) {
-    startPrinting()
+    onRevealDone()
   }
 })
 
@@ -114,7 +154,7 @@ onUnmounted(() => cancelAnimationFrame(rafId))
     ref="scrollBox"
     class="text-flow"
     :class="fontSize"
-    @click="skip"
+    @click="onTextClick"
   >
     <p
       v-for="(line, i) in textFlow"
@@ -122,9 +162,10 @@ onUnmounted(() => cancelAnimationFrame(rafId))
       class="line"
       :class="['tc-' + (line.color ?? 'white'), { bold: line.bold }]"
     >
-      {{ displayText(line, i) }}<span v-if="printing && i === textFlow.length - 1" class="caret">▌</span>
+      {{ displayText(line, i) }}
     </p>
     <p v-if="!textFlow.length" class="placeholder">——</p>
+    <p v-if="showContinue" class="continue-hint">▼ 点击继续</p>
   </div>
 </template>
 
@@ -147,20 +188,24 @@ onUnmounted(() => cancelAnimationFrame(rafId))
 .line {
   animation: fadeUp 0.25s ease;
   word-break: break-all;
+  white-space: pre-line; /* 支持 ui.text 内 \n 多行 */
 }
 
 .line.bold {
   font-weight: 700;
 }
 
-.caret {
+.continue-hint {
+  margin-top: 6px;
   color: var(--accent);
   opacity: 0.7;
-  animation: blink 0.8s step-end infinite;
+  font-size: 12px;
+  animation: blink 1.2s ease-in-out infinite;
+  user-select: none;
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% { opacity: 0.3; }
 }
 
 .placeholder {

@@ -118,6 +118,16 @@ async function run() {
   console.log('✓ game.load → load.result:', loadOk)
   if (!loadOk) throw new Error('读档失败')
 
+  // 6.5 删除存档：game.delete_save → delete.result + 槽位列表刷新
+  ws.send(JSON.stringify({ type: 'game.delete_save', payload: { slot_id: 3 } }))
+  await sleep(500)
+  const delOk = messages.filter((m) => m.type === 'delete.result').at(-1)?.payload?.ok
+  console.log('✓ game.delete_save → delete.result:', delOk)
+  if (!delOk) throw new Error('删除存档失败')
+  const slot3After = messages.filter((m) => m.type === 'saves.list').at(-1)?.payload?.slots?.find((s) => s.slot_id === 3)
+  console.log(`✓ 删除后槽位 3: exists=${slot3After?.exists}`)
+  if (slot3After?.exists) throw new Error('删除后槽位仍存在')
+
   // 7. 快速存档
   ws.send(JSON.stringify({ type: 'game.quick_save' }))
   await sleep(400)

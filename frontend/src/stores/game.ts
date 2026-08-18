@@ -296,6 +296,11 @@ export const useGameStore = defineStore('game', {
       this.uiMode = 'game'
     },
 
+    deleteSave(slotId: number): void {
+      wsClient.send({ type: 'game.delete_save', payload: { slot_id: slotId } })
+      this.showToast('存档已删除')
+    },
+
     /** 玩家选择选项（1-based index） */
     choose(index: number): void {
       if (!this.choice) return

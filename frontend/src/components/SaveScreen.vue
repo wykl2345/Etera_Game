@@ -68,6 +68,21 @@ function onSlot(slot: SaveSlotInfo): void {
 function formatTime(t: string | undefined): string {
   return t ? t.slice(5, 16) : ''
 }
+
+// ── 删除确认弹窗 ────────────────────────────────
+const confirmDelete = ref<SaveSlotInfo | null>(null)
+
+function onDelete(slot: SaveSlotInfo): void {
+  // 阻止冒泡到槽位点击（不触发保存/读档）
+  confirmDelete.value = slot
+}
+
+function doDelete(): void {
+  if (confirmDelete.value) {
+    store.deleteSave(confirmDelete.value.slot_id)
+  }
+  confirmDelete.value = null
+}
 </script>
 
 <template>
@@ -97,12 +112,41 @@ function formatTime(t: string | undefined): string {
             </template>
             <span v-else class="slot-empty">空槽位</span>
           </div>
+          <button
+            v-if="slot.exists"
+            class="del-btn"
+            title="删除存档"
+            @click.stop="onDelete(slot)"
+          >
+            <span class="del-x">✕</span>
+          </button>
         </div>
       </div>
 
       <div class="footer">
         <button class="btn" @click="store.closeMenu">返回</button>
       </div>
+
+      <!-- 删除确认弹窗 -->
+      <Transition name="confirm">
+        <div v-if="confirmDelete" class="confirm-overlay">
+          <div class="confirm-box">
+            <h3>删除存档</h3>
+            <p>
+              确定要删除槽位
+              <span class="hl">{{ confirmDelete.slot_id === 0 ? '快速存档' : confirmDelete.slot_id }}</span>
+              的存档吗？
+            </p>
+            <p v-if="confirmDelete.metadata" class="meta">
+              第 {{ confirmDelete.metadata.day }} 天 · {{ formatTime(confirmDelete.metadata.save_time) }}
+            </p>
+            <div class="btns">
+              <button class="btn danger" @click="doDelete">删除</button>
+              <button class="btn" @click="confirmDelete = null">取消</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -233,6 +277,108 @@ function formatTime(t: string | undefined): string {
 .slot-empty {
   color: var(--fg-dim);
   opacity: 0.5;
+}
+
+/* 删除按钮：圆角方形红叉 */
+.del-btn {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.del-x {
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.del-btn:hover {
+  border-color: var(--danger);
+  background: rgba(224, 122, 106, 0.1);
+}
+
+.del-btn:hover .del-x {
+  color: var(--danger);
+}
+
+/* 删除确认弹窗 */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 12, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-box {
+  width: min(360px, 84vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 28px;
+  animation: fadeUp 0.2s ease;
+}
+
+.confirm-box h3 {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.15em;
+  color: var(--danger);
+  margin-bottom: 12px;
+}
+
+.confirm-box p {
+  font-size: 14px;
+  color: var(--fg);
+  line-height: 1.7;
+}
+
+.confirm-box .hl {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.confirm-box .meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+}
+
+.confirm-box .btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.confirm-box .btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.confirm-box .btn.danger:hover {
+  background: rgba(224, 122, 106, 0.12);
+}
+
+.confirm-enter-active,
+.confirm-leave-active {
+  transition: opacity 0.2s ease;
+}
+.confirm-enter-from,
+.confirm-leave-to {
+  opacity: 0;
 }
 
 .footer {

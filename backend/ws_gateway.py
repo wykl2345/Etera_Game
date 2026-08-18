@@ -142,6 +142,11 @@ async def handle_connection(
                 bundle.api._push_status()
         elif mtype == "game.list_saves":
             _send_saves_list(bundle, output)
+        elif mtype == "game.delete_save":
+            slot_id = int(payload.get("slot_id", 0))
+            ok = bundle.save_manager.delete(slot_id)
+            output.send({"type": "delete.result", "payload": {"ok": ok, "slot_id": slot_id}})
+            _send_saves_list(bundle, output)
         elif mtype == "choice.made":
             bundle.scheduler.resolve_wait(
                 str(msg.get("requestId", "")),
