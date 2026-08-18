@@ -13,7 +13,8 @@
 | lupa | 2.8 | wheel 内置 Lua 5.1-5.5 + LuaJIT；**Mod 沙箱固定 `lupa.lua54`** |
 | websockets (PyPI) | ≥ 14（建议最新 17.x） | 14.0 起新版 asyncio API 为默认 |
 | Vue | 3.5.x | `npm create vite` 模板 `vue-ts` |
-| Vite | 8.x | **要求 Node 20.19+ / 22.12+** |
+| Vite | 8.x | **要求 Node 20.19+ / 22.12+**；WSL 已装 **v24.19.0**（`~/.local/bin`） |
+| Node (WSL) | v24.19.0 | 2026-08 安装，PATH 已写入 `~/.bashrc`；npm 11.17.0 |
 | Pinia | 4.x | peer: `vue ^3.5.11` + `typescript >=5.6.0` |
 | TypeScript | 7.x | 官方推荐 `<script setup lang="ts">` |
 
@@ -55,7 +56,8 @@
 
 ### 4. Vite / Node
 - Vite 8 要求 **Node 20.19+ 或 22.12+**。
-- **WSL 内尚未安装 Node**（Windows 侧是 v22.22.0）→ Phase 2 初始化前端前需在 WSL 装 Node（建议 nvm 或 nodesource 安装 ≥22.12）。
+- WSL 已安装 Node **v24.19.0**（解压至 `~/.local/`，`export PATH="$HOME/.local/bin:$PATH"` 已写入 `~/.bashrc`）。升级/重装：下载官方 tarball `https://nodejs.org/dist/<version>/<version>-linux-x64.tar.xz` 解压到 `~/.local`。
+- 注意：`latest-v2x.x` 目录随版本退役会被移除（v22 已 404），安装时用仍在维护的 LTS 线（如 `v24.x`）并写死具体版本号。
 
 ### 5. Vue / Pinia / TS
 - `<script setup lang="ts">` 是官方推荐写法（create-vue 脚手架默认）。

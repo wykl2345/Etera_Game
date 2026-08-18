@@ -1,7 +1,7 @@
 # Etera_Game 重构架构设计 v2 — 前后端分离 + Web 渲染
 
 > 状态: 已定稿 | 技术栈: Python 3.12 (asyncio) + Vue 3 + Vite + WebSocket
-> 关联: `Etera_Game 开发日志重构架构设计.md`(v1 架构) / `DSL.txt`(37 指令契约) / `项目分析报告.md`(v1 现状)
+> 关联: `DSL.txt`(37 指令契约) / `docs/requirements.md`(PRD) / `CONTEXT.md`(领域词汇) / v1 文档与源码见 `docs/archive/v1/` 与 git tag `pre-web-refactor`
 
 ---
 
@@ -188,7 +188,7 @@ v1 的 `push_mode/pop_mode/reset_mode` 思路在 Web 端天然成立，直接用
 | `character_detail` | 隐藏 | 角色详情弹窗 |
 | `minigame` | 隐藏 | 小游戏（预留） |
 
-详见 `docs/archive/status-bar-mode-stack/PRD.md`，规则表可直接照搬。
+详见 `docs/archive/v1/status-bar-mode-stack/PRD.md`，规则表可直接照搬。
 
 ### 6.3 终端风格主题
 
@@ -207,26 +207,26 @@ v1 的 `push_mode/pop_mode/reset_mode` 思路在 Web 端天然成立，直接用
 
 ```
 EE1/
+├── CONTEXT.md                   # 领域词汇表（统一语言）
+├── DSL.txt                      # Mod 契约（37 指令，前后端协议基准）
 ├── backend/                     # Python 游戏逻辑服务
-│   ├── engine/                  # 沙箱/调度/事件/状态/存档（按 v2 文档重写）
+│   ├── engine/                  # 沙箱/调度/事件/状态（按本文档重写）
 │   ├── ws_gateway.py            # WebSocket 网关
 │   ├── main.py                  # 启动入口
 │   └── requirements.txt
-├── frontend/                    # Vue 3 + Vite
+├── frontend/                    # Vue 3 + Vite + TS
 │   ├── src/…                    # 见 6.1
 │   └── package.json
 ├── Data/                        # 共创区（复用，Lua + YAML 原样保留）
-│   ├── characters/  events/  config/  items/  ui_themes/
+│   ├── characters/  scenarios/  config/  items/  ui_themes/
 ├── resources/                   # 素材（经 HTTP 静态服务提供给前端）
 │   ├── images/  audio/  fonts/
-├── docs/                        # 文档
-│   ├── 重构架构设计v2-前后端分离.md   # 本文档
-│   └── archive/                 # v1 归档（UI 模式栈 PRD、issue 等）
-├── DSL.txt                      # Mod 契约（37 指令，前后端协议基准）
-├── 游戏界面设计文档.md             # v1 UI 规范（Web 化时的布局参考）
-├── 美术资源规范.md                # 素材规范（直接复用）
-├── 项目分析报告.md                # v1 现状总览（重写时对照）
-└── Etera_Game 开发日志重构架构设计.md # v1 架构设计（模块级细节参考）
+└── docs/                        # 文档体系（agent 开发的事实来源）
+    ├── architecture.md          # 本文档：架构 + WS 协议
+    ├── requirements.md          # PRD：Phase 1-2 需求条目 + 验收标准
+    ├── references.md            # 官方文档链接 + 版本坑位 + v1 源码查阅
+    ├── adr/                     # 决策记录 0001-0006
+    └── archive/v1/              # v1 归档：4 份文档 + status-bar-mode-stack PRD
 ```
 
 ---
@@ -237,7 +237,7 @@ EE1/
 |---|---|---|
 | **0** | 环境迁移 WSL + 文档梳理（本阶段） | ✅ 已完成：WSL 环境、git 留档、架构定稿 |
 | **1** | 后端引擎核心重写：沙箱 + 调度器 + 事件总线 + 状态 + 存档 | 单元测试通过（复用 v1 测试用例思路，见 `pre-web-refactor` 的 tests/） |
-| **2** | WS 网关 + 最小前端（文本流 + 选项 + 主菜单） | 浏览器跑通序章 `Data/events/story/intro.lua` |
+| **2** | WS 网关 + 最小前端（文本流 + 选项 + 主菜单） | 浏览器跑通序章 `Data/scenarios/story/intro.lua` |
 | **3** | 状态栏 / 立绘 / 背景 / 存档界面（模式栈落地） | 咖啡店、蘑菇事件完整可玩 |
 | **4** | 打磨：逐字打印、主题、设置面板 + 小游戏 Canvas 实验 | 小型肉鸽原型挂载成功 |
 

@@ -2,8 +2,42 @@
 
 Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 
-- **后端**: Python 3.12 + asyncio（Lua 沙箱 + 事件总线 + 状态 + 存档）
-- **前端**: Vue 3 + Vite（浏览器渲染，终端风格 UI）
-- **通信**: WebSocket (JSON)，37 个 Lua 指令为 Mod 契约（见 DSL.txt）
-- **文档**: docs/architecture.md（架构）、docs/requirements.md（需求）、CONTEXT.md（领域词汇）
-- **旧版**: v1 文档与源码见 docs/archive/v1/ 与 git tag pre-web-refactor
+- **后端**: Python 3.12 + asyncio（Lua 沙箱 + 事件总线 + 状态管理）
+- **前端**: Vue 3 + Vite + TypeScript（浏览器渲染）
+- **通信**: WebSocket (JSON)，37 个 Lua 指令为 Mod 契约（DSL.txt）
+- **开发环境**: WSL Ubuntu-24.04，项目位于 `~/projects/EE1`（以 WSL 内为准）
+
+## 文档体系（agent 开发的事实来源）
+
+| 文档 | 内容 |
+|---|---|
+| `CONTEXT.md` | 领域词汇表（Event/Scenario/Scene、叙事/系统界面等统一语言） |
+| `docs/architecture.md` | 架构设计 + WS 通信协议（requestId 机制、asyncio 调度） |
+| `docs/requirements.md` | ★ 正式 PRD：Phase 1-2 需求条目 + 验收标准（开发按此逐条实现） |
+| `docs/references.md` | 官方文档链接 + 版本坑位 + v1 源码查阅方法 |
+| `docs/adr/` | 决策记录 0001-0006 |
+| `DSL.txt` | Mod 契约：37 个 Lua 指令（协议基准，不得变更语义） |
+| `docs/archive/v1/` | v1 文档归档（含 UI 模式栈 PRD；完整源码见 git tag `pre-web-refactor`） |
+
+> 规则：开发长任务以文档驱动——先读 `requirements.md` 对应条目，再实现；新决策写入 `docs/adr/`，新术语写入 `CONTEXT.md`，新坑位写入 `references.md`。
+
+## 环境速查
+
+```bash
+# 项目位置（WSL）
+cd ~/projects/EE1
+
+# 后端（Python 3.12 + .venv）
+python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python -m pytest          # 测试（Phase 1 后可用）
+
+# 前端（Node ≥24，已装于 ~/.local）
+cd frontend && npm install && npm run dev   # Phase 2 后可用
+```
+
+## 迁移状态
+
+- ✅ 环境迁移 WSL（Ubuntu 24.04.1，系统已更新）
+- ✅ 文档体系 v2 定稿（架构/PRD/参考/ADR/词汇表）
+- ⏳ Phase 1 后端引擎重写（按 `docs/requirements.md` P1-01…）
+- ⏳ Phase 2 最小前端（Vue3 + TS，3 剧本全跑）
