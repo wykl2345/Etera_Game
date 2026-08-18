@@ -87,6 +87,8 @@ interface GameState {
   textIdle: boolean
   /** 文本推进信号（GameScreen 点击委托递增，TextFlow 监听推进段落） */
   textAdvanceTick: number
+  /** 自动播放模式：选择选项/提交输入/小游戏结束后，新对话自动连续显示（直到下一交互点） */
+  autoAdvance: boolean
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -109,6 +111,7 @@ export const useGameStore = defineStore('game', {
     activeMinigame: null,
     textIdle: true,
     textAdvanceTick: 0,
+    autoAdvance: false,
   }),
 
   actions: {
@@ -142,6 +145,7 @@ export const useGameStore = defineStore('game', {
           options: (p.options ?? []).map(String),
         }
         this.awaitingChoice = true
+        this.autoAdvance = false // 进入交互等待
       })
       wsClient.on('ui.ask_input', (m) => {
         const p = (m.payload ?? {}) as { prompt?: string; default?: string; max_length?: number }
@@ -151,6 +155,7 @@ export const useGameStore = defineStore('game', {
           default: p.default ?? '',
           maxLength: p.max_length ?? 100,
         }
+        this.autoAdvance = false
       })
       wsClient.on('ui.background_set', (m) => {
         const p = (m.payload ?? {}) as { name?: string }
@@ -201,6 +206,7 @@ export const useGameStore = defineStore('game', {
         const p = (m.payload ?? {}) as { game_id?: string }
         this.pushMode('minigame')
         this.activeMinigame = { gameId: p.game_id ?? '', requestId: m.requestId ?? null }
+        this.autoAdvance = false
       })
     },
 
@@ -278,6 +284,7 @@ export const useGameStore = defineStore('game', {
       }
       this.activeMinigame = null
       this.popMode()
+      this.autoAdvance = true // 小游戏结束后对话自动播放
     },
 
     saveToSlot(slotId: number): void {
@@ -323,6 +330,7 @@ export const useGameStore = defineStore('game', {
       })
       this.choice = null
       this.awaitingChoice = false
+      this.autoAdvance = true // 选择后对话自动连续播放
     },
 
     /** 提交文字输入 */
@@ -334,6 +342,7 @@ export const useGameStore = defineStore('game', {
         payload: { text },
       })
       this.input = null
+      this.autoAdvance = true
     },
 
     scrollToBottom(): void {

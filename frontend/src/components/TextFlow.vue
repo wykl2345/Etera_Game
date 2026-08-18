@@ -121,7 +121,14 @@ function printing(): void {
 function onRevealDone(): void {
   scrollToBottom()
   if (confirmed.value + 1 < textFlow.value.length) {
-    showContinue.value = true // 有后续行 → 等点击
+    if (store.autoAdvance) {
+      // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
+      confirmed.value++
+      activeIdx.value = -1
+      startNext()
+    } else {
+      showContinue.value = true // 有后续行 → 等点击
+    }
   } else {
     // 无后续行：文本静止 → textIdle=true → 选项/输入框可显示
     activeIdx.value = -1
