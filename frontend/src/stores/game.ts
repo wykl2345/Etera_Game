@@ -8,7 +8,7 @@ import { wsClient } from '../ws/client'
 /** 静态资源基地址（后端 main.py 的静态服务，默认 127.0.0.1:8766） */
 export const ASSET_BASE = 'http://127.0.0.1:8766'
 
-export type UiMode = 'main_menu' | 'game' | 'settings' | 'save' | 'load' | 'character_detail'
+export type UiMode = 'main_menu' | 'game' | 'settings' | 'save' | 'load' | 'character_detail' | 'minigame'
 
 export interface TextLine {
   text: string
@@ -222,6 +222,14 @@ export const useGameStore = defineStore('game', {
 
     closeMenu(): void {
       this.uiMode = 'game'
+    },
+
+    openSettings(): void {
+      this.uiMode = 'settings'
+    },
+
+    openMinigame(): void {
+      this.uiMode = 'minigame'
     },
 
     saveToSlot(slotId: number): void {

@@ -33,7 +33,8 @@ function quit(): void {
     <nav class="menu">
       <button class="menu-btn primary" @click="onStart">开始新游戏</button>
       <button class="menu-btn" :disabled="!hasSave" @click="onContinue">继续游戏</button>
-      <button class="menu-btn" disabled title="Phase 4 实现">设置</button>
+      <button class="menu-btn" @click="store.openSettings">设置</button>
+      <button class="menu-btn" @click="store.openMinigame">小游戏（实验）</button>
       <button class="menu-btn" @click="quit">退出</button>
     </nav>
 

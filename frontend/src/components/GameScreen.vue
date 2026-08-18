@@ -8,6 +8,8 @@ import TextFlow from './TextFlow.vue'
 import ChoiceMenu from './ChoiceMenu.vue'
 import InputOverlay from './InputOverlay.vue'
 import SaveScreen from './SaveScreen.vue'
+import SettingsPanel from './SettingsPanel.vue'
+import SlimeBattle from '../games/SlimeBattle.vue'
 
 const store = useGameStore()
 const { uiMode, toast } = storeToRefs(store)
@@ -33,11 +35,14 @@ const { uiMode, toast } = storeToRefs(store)
       <button class="tool-btn" @click="store.openLoad">读取</button>
       <button class="tool-btn" @click="store.quickSave" title="快速存档">快存</button>
       <button class="tool-btn" @click="store.quickLoad" title="快速读取">快读</button>
+      <button class="tool-btn" @click="store.openSettings">设置</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
     </div>
 
     <SaveScreen v-if="uiMode === 'save'" mode="save" />
     <SaveScreen v-else-if="uiMode === 'load'" mode="load" />
+    <SettingsPanel v-if="uiMode === 'settings'" />
+    <SlimeBattle v-if="uiMode === 'minigame'" />
 
     <Transition name="toast">
       <div v-if="toast" class="toast">{{ toast }}</div>
