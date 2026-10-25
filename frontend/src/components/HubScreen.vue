@@ -102,6 +102,7 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
           :title="hubScene.shop.name"
           @click="store.openShop()"
         >购物</button>
+        <button class="hero-btn" @click="store.openInventory()">背包</button>
         <button class="hero-btn" @click="store.openCharacters()">信息确认</button>
       </section>
 

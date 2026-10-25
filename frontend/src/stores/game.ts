@@ -116,6 +116,11 @@ export interface InventoryItem {
   desc: string
   /** 卖出单价（商店回收价） */
   sell_price: number
+  /** 分类：item / equip / skill / key */
+  category: string
+  category_label: string
+  /** 是否可使用 */
+  usable: boolean
 }
 
 /** 商店商品 */
@@ -195,7 +200,7 @@ interface GameState {
    * 用 uiMode 切换会把整个页面替换掉（SaveScreen 渲染在 GameScreen 内），
    * 离开叙事页后就只剩空壳 —— 表现为"点保存后跳到一个只有 —— 的页面"。
    */
-  panel: 'save' | 'load' | 'settings' | 'characters' | 'shop' | 'gift' | null
+  panel: 'save' | 'load' | 'settings' | 'characters' | 'shop' | 'gift' | 'inventory' | null
   /** 角色一览数据 */
   charactersList: CharacterInfo[]
   /** 角色一览排序方式 */
@@ -214,6 +219,10 @@ interface GameState {
   inventory: InventoryItem[]
   /** 商店面板页签：买入 / 卖出 */
   shopTab: 'buy' | 'sell'
+  /** 全屏 CG（null = 普通叙事画面） */
+  cgImage: string | null
+  /** 背包分类筛选 */
+  invCategory: 'all' | 'item' | 'equip' | 'skill' | 'key'
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -252,6 +261,8 @@ export const useGameStore = defineStore('game', {
     giftChar: null,
     inventory: [],
     shopTab: 'buy',
+    cgImage: null,
+    invCategory: 'all',
   }),
 
   getters: {
@@ -294,6 +305,12 @@ export const useGameStore = defineStore('game', {
     detailCharacter(state): CharacterInfo | null {
       if (!state.detailChar) return null
       return state.charactersList.find((c) => c.char_id === state.detailChar) ?? null
+    },
+
+    /** 按分类筛选后的背包（背包面板用） */
+    filteredInventory(state): InventoryItem[] {
+      if (state.invCategory === 'all') return state.inventory
+      return state.inventory.filter((it) => it.category === state.invCategory)
     },
 
     canPersist(state): boolean {
@@ -561,6 +578,25 @@ export const useGameStore = defineStore('game', {
         }
       })
 
+      // 全屏 CG 特写（DSL ui.cg / ui.cg_off）
+      wsClient.on('ui.cg', (m) => {
+        const p = (m.payload ?? {}) as { name?: string | null }
+        this.cgImage = p.name ?? null
+      })
+
+      // 使用物品结果
+      wsClient.on('use.result', (m) => {
+        const p = (m.payload ?? {}) as {
+          ok?: boolean; name?: string; changes?: string; reason?: string
+        }
+        if (p.ok) {
+          this.showToast(`用了 ${p.name}：${p.changes}`)
+          this.refreshInventory()
+        } else {
+          this.showToast(p.reason ?? '用不了')
+        }
+      })
+
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
       wsClient.on('minigame.start', (m) => {
         const p = (m.payload ?? {}) as { game_id?: string }
@@ -704,6 +740,23 @@ export const useGameStore = defineStore('game', {
       this.panel = null
     },
 
+    /** 打开背包 */
+    openInventory(): void {
+      this.panel = 'inventory'
+      this.invCategory = 'all'
+      this.refreshInventory()
+    },
+
+    /** 切换背包分类 */
+    setInvCategory(cat: 'all' | 'item' | 'equip' | 'skill' | 'key'): void {
+      this.invCategory = cat
+    },
+
+    /** 使用物品 */
+    useItem(itemId: string): void {
+      wsClient.send({ type: 'game.use_item', payload: { item: itemId } })
+    },
+
     /** 打开当前地点的商店 */
     openShop(): void {
       this.panel = 'shop'
@@ -773,6 +826,7 @@ export const useGameStore = defineStore('game', {
       this.input = null
       this.activeMinigame = null
       this.eventFinished = false
+      this.cgImage = null
       this.uiMode = 'hub'
       // 关键：中止可能仍挂起的脚本。
       // 玩家从对话中途点「返回」时，后端脚本还等在 ask_choice 上，
@@ -800,6 +854,7 @@ export const useGameStore = defineStore('game', {
       this.choice = null
       this.input = null
       this.background = null
+      this.cgImage = null
       this.characters.clear()
       this.uiMode = 'game'
       wsClient.send({ type: 'game.emit_event', payload: { event: btn.event } })

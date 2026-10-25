@@ -18,6 +18,8 @@ return {
 
         world.set_time("night")
         ui.set_background("shrine", "fade")
+        -- 突破事件用全屏 CG 特写：区别于普通对话（隐藏立绘，只留 CG 与文本）
+        ui.cg("reimu_03_confession")
         ui.show_character("reimu", "normal", "center")
 
         ui.text("夜里的神社，只有灯笼还亮着。", "white")
@@ -56,6 +58,7 @@ return {
         data.set_stage("reimu", "love")
         data.set_flag("reimu", "story_03_done", true)
         data.log_commit()
+        ui.cg_off()
         ui.hide_character("reimu")
     end
 }

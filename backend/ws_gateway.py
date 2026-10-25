@@ -13,6 +13,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
+from engine.api_bridge import STAT_LABELS
 from engine.bootstrap import init_engine
 from engine.script_runner import ScriptAbortedError, UIOutput
 
@@ -87,6 +88,25 @@ async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
 
 # 商店回收价 = 基准价 × 该比例
 SELL_RATIO = 0.5
+
+# 一天内的时段顺序（dawn 是剧本专用时刻，不参与日常推进）
+TIME_ORDER = ["morning", "afternoon", "evening", "night"]
+
+
+def _spend_time(bundle: Any) -> str:
+    """执行一次 Hub 行动消耗一个时段，返回推进后的时段。
+
+    已到 night 就不再推进（夜里可以继续行动，但时间停住），
+    由「睡觉」推进到第二天。
+    """
+    cur = bundle.ctx.get_time_of_day().value
+    idx = TIME_ORDER.index(cur) if cur in TIME_ORDER else 0
+    if idx < len(TIME_ORDER) - 1:
+        nxt = TIME_ORDER[idx + 1]
+        bundle.ctx.set_time_of_day(nxt)
+        bundle.api._push_status()
+        return nxt
+    return cur
 
 # 关系阶段门槛（与 v1 设计文档一致：敌视 → 伴侣）
 _RELATION_STAGES = [
@@ -406,9 +426,11 @@ async def handle_connection(
                 if btn is not None:
                     if getattr(btn, "stamina_cost", 0):
                         bundle.ctx.modify_player_stat("stamina", -btn.stamina_cost)
-                        bundle.api._push_status()
                     if getattr(btn, "daily_limit", 0):
                         _mark_action_used(bundle, event_name)
+                    # 角色行动消耗一个时段（移动/购物/查看信息不耗时）
+                    _spend_time(bundle)
+                    bundle.api._push_status()
                 recorder.begin()
 
                 def run_event() -> None:
@@ -561,6 +583,9 @@ async def handle_connection(
                     "count": cnt,
                     "gift_value": it.gift_value if it else 0,
                     "desc": it.desc if it else "",
+                    "category": it.category if it else "item",
+                    "category_label": it.category_label if it else "未定义",
+                    "usable": bool(it.usable) if it else False,
                     # 回收价：基准价的 50%（物品未定义时按 0）
                     "sell_price": int(it.price * SELL_RATIO) if it else 0,
                 })
@@ -603,6 +628,47 @@ async def handle_connection(
                              "payload": {"ok": True, "item": item_id, "count": qty,
                                          "income": income,
                                          "money": bundle.ctx.get_player_stat("money", 0)}})
+                _send_characters(bundle, output)
+        elif mtype == "game.use_item":
+            catalog = getattr(bundle, "catalog", None)
+            item_id = str(payload.get("item", ""))
+            it = catalog.item(item_id) if catalog else None
+            if it is None:
+                output.send({"type": "use.result",
+                             "payload": {"ok": False, "reason": "没有这种物品"}})
+            elif not it.usable:
+                output.send({"type": "use.result",
+                             "payload": {"ok": False, "item": item_id,
+                                         "reason": f"{it.name}不能使用"}})
+            elif bundle.ctx.get_item_count(item_id) < 1:
+                output.send({"type": "use.result",
+                             "payload": {"ok": False, "item": item_id,
+                                         "reason": "背包里没有这件东西"}})
+            else:
+                # 应用效果（含概率副作用）
+                applied = []
+                for eff in it.use_effects:
+                    chance = float(eff.get("chance", 1.0))
+                    if chance < 1.0 and random.random() > chance:
+                        continue
+                    stat = eff.get("stat")
+                    delta = eff.get("delta")
+                    if stat and delta is not None:
+                        bundle.ctx.modify_player_stat(str(stat), int(delta))
+                        label = STAT_LABELS.get(str(stat), str(stat))
+                        applied.append(f"{label}{int(delta):+d}")
+                    flag_ns = eff.get("flag")
+                    if flag_ns:
+                        ns, _, key = str(flag_ns).partition(".")
+                        bundle.ctx.set_global_flag(ns, key, eff.get("value", True))
+                        applied.append(f"标记 {flag_ns}")
+
+                bundle.ctx.remove_item(item_id, 1)
+                bundle.api._push_status()
+                output.send({"type": "use.result",
+                             "payload": {"ok": True, "item": item_id,
+                                         "name": it.name,
+                                         "changes": "，".join(applied) if applied else "无特别效果"}})
                 _send_characters(bundle, output)
         elif mtype == "game.buy":
             catalog = getattr(bundle, "catalog", None)

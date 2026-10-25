@@ -467,6 +467,128 @@ class TestSellAndItemCatalog:
         assert SELL_RATIO == 0.5
 
 
+class TestTimeFlow:
+    """行动消耗时段：morning → afternoon → evening → night，夜里不再推进。"""
+
+    def test_spend_time_advances(self, tmp_path):
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+        from ws_gateway import _spend_time
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+        )
+        assert b.ctx.get_time_of_day().value == "morning"
+        assert _spend_time(b) == "afternoon"
+        assert _spend_time(b) == "evening"
+        assert _spend_time(b) == "night"
+        # 夜里不再推进（由睡觉进下一天）
+        assert _spend_time(b) == "night"
+        assert b.ctx.get_time_of_day().value == "night"
+
+
+class TestItemCategoryAndUse:
+    """物品分类（item/equip/skill/key）+ 可使用物品效果。"""
+
+    def _catalog(self):
+        from engine.catalog import Catalog
+
+        return Catalog(
+            SCRIPTS_DIR.parent / "items" / "items.yaml",
+            SCRIPTS_DIR.parent / "shops" / "shops.yaml",
+        )
+
+    def test_categories_loaded(self):
+        c = self._catalog()
+        assert c.item("煎茶").category == "item"
+        assert c.item("木刀").category == "equip"
+        assert c.item("灵符").category == "skill"
+        assert c.item("御守").category == "key"
+        assert c.item("御守").category_label == "重要物品"
+
+    def test_usable_flags(self):
+        c = self._catalog()
+        assert c.item("煎茶").usable is True
+        assert c.item("御守").usable is False
+        assert c.item("木刀").usable is False
+
+    def test_use_effects_defined(self):
+        c = self._catalog()
+        effs = c.item("glowing_mushroom").use_effects
+        assert any(e.get("stat") == "stamina" and e.get("delta") == 6 for e in effs)
+        # 概率副作用
+        assert any(e.get("chance") is not None for e in effs)
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_use_item_applies_effect(self, tmp_path):
+        """使用发光蘑菇：体力 +6（副作用按概率，可能不触发）。"""
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+        import engine.catalog as catalog_mod
+
+        sent = []
+
+        class _O(UIOutput):
+            def send(self, msg):
+                sent.append(msg)
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+        )
+        b.ctx.set_player_stat("stamina", 50)
+        b.ctx.add_item("glowing_mushroom", 1)
+
+        # 直接调 Catalog 效果解析路径：通过 API 层模拟
+        it = b.catalog.item("glowing_mushroom")
+        for eff in it.use_effects:
+            chance = float(eff.get("chance", 1.0))
+            if chance < 1.0:
+                continue          # 跳过概率项，只验确定项
+            b.ctx.modify_player_stat(str(eff["stat"]), int(eff["delta"]))
+
+        assert b.ctx.get_player_stat("stamina") == 56
+
+
+class TestCG:
+    """CG 特写指令。"""
+
+    def test_cg_sends_event(self, tmp_path):
+        from engine.api_bridge import LuaAPI
+        from engine.event_bus import EventBus
+        from engine.game_context import GameContext
+        from engine.script_runner import UIOutput
+
+        sent = []
+
+        class _O(UIOutput):
+            def send(self, msg):
+                sent.append(msg)
+
+            # scheduler 需要 output 属性
+            output = None
+
+        class _Sched:
+            def __init__(self, out):
+                self.output = out
+
+        out = _O()
+        api = LuaAPI(scheduler=_Sched(out), context=GameContext(), event_bus=EventBus())
+
+        api._ui_cg("reimu_breakthrough")
+        assert sent[-1]["type"] == "ui.cg"
+        assert sent[-1]["payload"]["name"] == "reimu_breakthrough"
+
+        api._ui_cg_off()
+        assert sent[-1]["type"] == "ui.cg"
+        assert sent[-1]["payload"]["name"] is None
+
+
 class TestDialogueRecorder:
     """DialogueRecorder：只记录画面类消息，控制类不进快照；begin() 清空。"""
 

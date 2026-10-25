@@ -18,6 +18,8 @@ return {
 
         world.set_time("dawn")
         ui.set_background("shrine", "fade")
+        -- 突破事件用全屏 CG 特写：区别于普通对话（隐藏立绘，只留 CG 与文本）
+        ui.cg("reimu_04_sunrise")
         ui.show_character("reimu", "happy", "center")
 
         ui.text("天还没亮，你就被灵梦从被窝里拽了起来。", "white")
@@ -54,6 +56,7 @@ return {
         -- 首次突破伴侣时给一份纪念品
         data.add_item("博丽神社的御守", 1)
         data.log_commit()
+        ui.cg_off()
         ui.hide_character("reimu")
     end
 }

@@ -17,6 +17,8 @@ return {
         data.log_start("reimu", "神社的午后")
 
         ui.set_background("shrine", "fade")
+        -- 突破事件用全屏 CG 特写：区别于普通对话（隐藏立绘，只留 CG 与文本）
+        ui.cg("reimu_01_afternoon")
         ui.show_character("reimu", "normal", "center")
 
         ui.text("午后的博丽神社，安静得能听见风铃。", "white")
@@ -53,6 +55,7 @@ return {
         ui.text("（与灵梦的关系：友人）", "yellow")
 
         data.log_commit()
+        ui.cg_off()
         ui.hide_character("reimu")
     end
 }

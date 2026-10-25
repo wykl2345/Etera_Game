@@ -9,6 +9,15 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+# 物品分类（对齐 RPG Maker 经典分法）
+ITEM_CATEGORIES = {
+    "item": "普通物品",
+    "equip": "装备",
+    "skill": "技能",
+    "key": "重要物品",
+}
+
+
 @dataclass
 class ItemDef:
     id: str
@@ -16,6 +25,16 @@ class ItemDef:
     price: int = 0
     gift_value: int = 0
     desc: str = ""
+    # 分类：item / equip / skill / key
+    category: str = "item"
+    # 是否可使用（普通物品/技能一般可用，装备/重要物品不可消耗）
+    usable: bool = False
+    # 使用效果列表，见 use_item 的解析
+    use_effects: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def category_label(self) -> str:
+        return ITEM_CATEGORIES.get(self.category, self.category)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -24,6 +43,10 @@ class ItemDef:
             "price": self.price,
             "gift_value": self.gift_value,
             "desc": self.desc,
+            "category": self.category,
+            "category_label": self.category_label,
+            "usable": self.usable,
+            "use_effects": list(self.use_effects),
         }
 
 
@@ -68,12 +91,20 @@ class Catalog:
         if isinstance(raw, dict):
             for iid, spec in raw.items():
                 spec = spec or {}
+                category = str(spec.get("category", "item") or "item")
+                if category not in ITEM_CATEGORIES:
+                    logger.warning("物品 %s 的分类 %s 无效，按 item 处理", iid, category)
+                    category = "item"
+                effects = spec.get("use_effects") or []
                 self._items[str(iid)] = ItemDef(
                     id=str(iid),
                     name=str(spec.get("name", iid)),
                     price=int(spec.get("price", 0) or 0),
                     gift_value=int(spec.get("gift_value", 0) or 0),
                     desc=str(spec.get("desc", "")),
+                    category=category,
+                    usable=bool(spec.get("usable", False)),
+                    use_effects=[dict(e) for e in effects if isinstance(e, dict)],
                 )
         logger.info("物品已加载: %d 种", len(self._items))
         return len(self._items)

@@ -156,6 +156,34 @@ hub = {
 > 多选角色（一次对多个角色发起行动）暂未做，数据结构上 `buttons` 已按 `char` 分组、
 > 前端 `hubSelectedChar` 是单值 —— 改成 `string[]` 即可扩展。
 
+### 4.6.0 时间流转
+
+一天四个时段：`morning → afternoon → evening → night`。
+
+- **角色行动**（Hub 上的剧本按钮）每执行一次推进一个时段；
+  移动、购物、查看信息等系统操作不耗时
+- 推进到 `night` 就停住 —— 夜里可以继续行动（剧情需要），但时间不再前进
+- **睡觉**（`game.sleep`，仅 `sleep: true` 的场景）→ 回满体力 + 进入下一天 + 重置到 morning
+- `dawn` 是剧本专用时刻（如日出场景），不参与日常推进
+
+因此 `hub.require_time = "night"` 这类条件有了实际意义：一天里只有推进到夜里才出现。
+
+**物品分类与使用**（`Data/items/items.yaml`）：
+
+```yaml
+glowing_mushroom:
+  name: 发光蘑菇
+  category: item        # item 普通 / equip 装备 / skill 技能 / key 重要物品
+  usable: true
+  use_effects:
+    - { stat: stamina, delta: 6 }
+    - { stat: hp, delta: -3, chance: 0.2 }   # 概率副作用：吃坏肚子
+```
+
+- `game.use_item{item}` → 按顺序应用效果（`stat`/`delta`/`chance`/`flag`），消耗 1 个
+- 概率项（`chance`）用于随机副作用；省略即必定触发
+- 背包面板按分类分页显示，`usable: false` 的物品显示「不可使用」
+
 ### 4.6.1 场景 / 行动成本
 
 **场景（Scene）** 是两级结构：区域（region）→ 地点（scene），定义在

@@ -1,6 +1,6 @@
 ================================================================================
             Etera_Game Lua DSL 指令参考手册
-            引擎版本: 2.1.0  最后更新: 2026-08-19（共 53 条指令）
+            引擎版本: 2.2.0  最后更新: 2026-08-19（共 55 条指令）
 ================================================================================
 
 本文档列出了Lua事件脚本中可用的全部API指令。与 Python api_bridge.py 一一对应，
@@ -167,6 +167,19 @@ ui.set_background(name, transition?)
     切换背景图。
     name       : string  背景图片名
     transition : string? 过渡效果 (fade / slide / none)，默认 fade
+
+ui.cg(name)
+    全屏 CG 特写：盖住背景与立绘，只留 CG 与文本。
+    用于好感突破、关键剧情等需要"区别于普通对话"的场合。
+    name : string  CG 资源名，素材路径 resources/images/cg/{name}.png
+    示例：
+        ui.cg("reimu_03_confession")
+        ui.text("夜里的神社，只有灯笼还亮着。", "white")
+        ...
+        ui.cg_off()
+
+ui.cg_off()
+    退出 CG，回到普通背景 + 立绘。
 
 ui.show_character(char_id, expression?, position?)
     显示角色立绘。
@@ -515,6 +528,8 @@ minigame.start(game_id, options?)
   ✓ ui.ask_choice(options) → number
   ✓ ui.ask_input(prompt, default?, max_length?) → string
   ✓ ui.set_background(name, transition?)
+  ✓ ui.cg(name)                    -- 全屏 CG 特写
+  ✓ ui.cg_off()                    -- 退出 CG
   ✓ ui.show_character(char_id, expression?, position?)
   ✓ ui.hide_character(char_id)
   ✓ data.get_chara(id) → table | nil

@@ -18,6 +18,8 @@ return {
 
         world.set_time("evening")
         ui.set_background("shrine", "fade")
+        -- 突破事件用全屏 CG 特写：区别于普通对话（隐藏立绘，只留 CG 与文本）
+        ui.cg("reimu_02_leaves")
         ui.show_character("reimu", "normal", "center")
 
         ui.text("傍晚的神社，落叶铺了一地。", "white")
@@ -53,6 +55,7 @@ return {
         data.set_stage("reimu", "close")
         data.set_flag("reimu", "story_02_done", true)
         data.log_commit()
+        ui.cg_off()
         ui.hide_character("reimu")
     end
 }

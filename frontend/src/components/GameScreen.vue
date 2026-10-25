@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
+import { computed, ref, watch } from 'vue'
+import { ASSET_BASE } from '../stores/game'
 import StatusBar from './StatusBar.vue'
 import BackgroundLayer from './BackgroundLayer.vue'
 import CharacterLayer from './CharacterLayer.vue'
@@ -10,7 +12,14 @@ import InputOverlay from './InputOverlay.vue'
 import MinigameHost from './MinigameHost.vue'
 
 const store = useGameStore()
-const { uiMode, toast } = storeToRefs(store)
+const { uiMode, toast, cgImage } = storeToRefs(store)
+
+/** CG 素材路径（缺图时显示占位） */
+const cgUrl = computed(() =>
+  cgImage.value ? `${ASSET_BASE}/images/cg/${cgImage.value}.png` : '',
+)
+const cgFailed = ref(false)
+watch(cgImage, () => { cgFailed.value = false })
 </script>
 
 <template>
@@ -24,6 +33,22 @@ const { uiMode, toast } = storeToRefs(store)
 
       <BackgroundLayer />
       <CharacterLayer />
+
+      <!-- 全屏 CG 特写（DSL ui.cg）：盖住背景与立绘，只留 CG 与文本 -->
+      <div v-if="cgImage" class="cg-layer">
+        <img
+          v-if="!cgFailed"
+          :src="cgUrl"
+          class="cg-img"
+          alt=""
+          @error="cgFailed = true"
+        />
+        <div v-else class="cg-placeholder">
+          <span class="cg-name">{{ cgImage }}</span>
+          <span class="cg-hint">CG 素材待补</span>
+          <span class="cg-path">images/cg/{{ cgImage }}.png</span>
+        </div>
+      </div>
 
       <div class="text-area">
         <TextFlow />
@@ -79,6 +104,46 @@ const { uiMode, toast } = storeToRefs(store)
   position: relative;
   height: 100%;
   overflow: hidden;
+}
+
+.cg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;          /* 盖住背景(0)与立绘，但在文本区之下 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #08090b;
+  animation: cgFade 0.45s ease;
+}
+.cg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.cg-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.cg-name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--fg-dim);
+  letter-spacing: 0.2em;
+}
+.cg-hint {
+  font-size: 10px;
+  color: #3a434d;
+}
+.cg-path {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #2f373f;
+}
+@keyframes cgFade {
+  from { opacity: 0; }
 }
 
 .text-area {

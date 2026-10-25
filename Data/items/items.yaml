@@ -1,10 +1,18 @@
-# 物品定义 —— 商店售卖、送礼共用
+# 物品定义 —— 商店售卖、送礼、使用共用
 #
-# 每个物品：
-#   name        显示名
-#   price       基准售价（商店可在自己的配置里覆盖）
-#   gift_value  送给角色时增加的好感
-#   desc        描述
+# 字段：
+#   name         显示名
+#   price        基准售价
+#   gift_value   送给角色时增加的好感
+#   desc         描述
+#   category     分类：item(普通) / equip(装备) / skill(技能) / key(重要物品)
+#   usable       是否可使用（普通物品/技能一般 true）
+#   use_effects  使用效果列表，按顺序应用：
+#                  stat   属性名（hp/mp/stamina/money/exp/level）
+#                  delta  增减值
+#                  chance 触发概率（0~1，省略 = 必定触发）→ 用于随机副作用
+#                  flag   改写的全局 flag（"命名空间.键"）
+#                  value  flag 的值（默认 true）
 
 items:
   煎茶:
@@ -12,23 +20,59 @@ items:
     price: 30
     gift_value: 5
     desc: 温热的绿茶，灵梦喜欢的味道。
+    category: item
+    usable: true
+    use_effects:
+      - { stat: stamina, delta: 4 }
 
   团子:
     name: 团子
     price: 50
     gift_value: 8
     desc: 三色团子，甜度刚好。
+    category: item
+    usable: true
+    use_effects:
+      - { stat: stamina, delta: 3 }
+      - { stat: money, delta: -20, chance: 0.1 }   # 一不小心又买了一串
 
   # 注意：id 必须与剧本里 data.add_item() 用的键一致（marisa_mushroom.lua 用的是
-  # glowing_mushroom），否则 Catalog 查不到 → 界面会显示原始 id、送礼好感为 0。
+  # glowing_mushroom），否则 Catalog 查不到 → 界面显示原始 id、送礼好感为 0。
   glowing_mushroom:
     name: 发光蘑菇
     price: 80
     gift_value: 6
-    desc: 魔法森林特产，在暗处会泛出微光。
+    desc: 魔法森林特产，在暗处会泛出微光。吃下去能恢复体力，但吃坏肚子也说不定。
+    category: item
+    usable: true
+    use_effects:
+      - { stat: stamina, delta: 6 }
+      # 运气不好会闹肚子 —— 概率副作用示例
+      - { stat: hp, delta: -3, chance: 0.2 }
 
   御守:
     name: 御守
     price: 120
     gift_value: 12
-    desc: 博丽神社的护身符，据说能避邪。
+    desc: 博丽神社的护身符，据说能避邪。重要物品，无法使用消耗。
+    category: key
+    usable: false
+
+  # ── 以下为分类示例，方便扩展时照着写 ──
+  木刀:
+    name: 木刀
+    price: 200
+    gift_value: 2
+    desc: 修行用的木刀。装备类物品，不可消耗。
+    category: equip
+    usable: false
+
+  灵符:
+    name: 灵符
+    price: 60
+    gift_value: 4
+    desc: 退魔用的符纸。使用后恢复少量法力。
+    category: skill
+    usable: true
+    use_effects:
+      - { stat: mp, delta: 15 }

@@ -11,6 +11,7 @@ import CharacterListModal from './components/CharacterListModal.vue'
 import CharacterDetail from './components/CharacterDetail.vue'
 import ShopModal from './components/ShopModal.vue'
 import GiftModal from './components/GiftModal.vue'
+import InventoryModal from './components/InventoryModal.vue'
 
 const store = useGameStore()
 const { uiMode, panel, detailChar } = storeToRefs(store)
@@ -36,6 +37,7 @@ onMounted(() => {
     <CharacterDetail v-if="detailChar" />
     <ShopModal v-if="panel === 'shop'" />
     <GiftModal v-if="panel === 'gift'" />
+    <InventoryModal v-if="panel === 'inventory'" />
   </div>
 </template>
 

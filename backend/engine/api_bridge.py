@@ -103,6 +103,8 @@ class LuaAPI:
                 "play_music": self._ui_play_music,
                 "stop_music": self._ui_stop_music,
                 "set_background": self._ui_set_background,
+                "cg": self._ui_cg,
+                "cg_off": self._ui_cg_off,
                 "show_character": self._ui_show_character,
                 "hide_character": self._ui_hide_character,
                 "ask_choice": self._ui_ask_choice,
@@ -230,6 +232,20 @@ class LuaAPI:
         self._scheduler.output.send(
             {"type": "ui.background_set", "payload": {"name": str(name), "transition": transition}}
         )
+
+    def _ui_cg(self, name: str) -> None:
+        """全屏 CG 特写：隐藏背景与立绘，只显示这张图。
+
+        用于好感突破、关键剧情等需要"区别于普通对话"的场景。
+        素材路径：resources/images/cg/{name}.png（缺图时前端显示占位）。
+        """
+        self._scheduler.output.send(
+            {"type": "ui.cg", "payload": {"name": str(name)}}
+        )
+
+    def _ui_cg_off(self) -> None:
+        """退出 CG，回到普通背景 + 立绘。"""
+        self._scheduler.output.send({"type": "ui.cg", "payload": {"name": None}})
 
     def _ui_show_character(self, char_id: str, expression: str = "normal", position: str = "center") -> None:
         self._scheduler.output.send(
