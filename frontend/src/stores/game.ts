@@ -3,6 +3,7 @@
  * 消息处理对应后端 ws_gateway 的推送。
  */
 import { defineStore } from 'pinia'
+import { nextTick } from 'vue'
 import { wsClient } from '../ws/client'
 
 /** 静态资源基地址（后端 main.py 的静态服务，默认 127.0.0.1:8766） */
@@ -89,6 +90,8 @@ interface GameState {
   textAdvanceTick: number
   /** 自动播放模式：选择选项/提交输入/小游戏结束后，新对话自动连续显示（直到下一交互点） */
   autoAdvance: boolean
+  /** 读档重放中：TextFlow 直接把快照全文显示，不走逐字打印 */
+  restoring: boolean
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -112,6 +115,7 @@ export const useGameStore = defineStore('game', {
     textIdle: true,
     textAdvanceTick: 0,
     autoAdvance: false,
+    restoring: false,
   }),
 
   getters: {
@@ -205,14 +209,14 @@ export const useGameStore = defineStore('game', {
         this.showToast(p.ok ? `已保存到槽位 ${p.slot_id}` : (p.reason ?? '保存失败'))
       })
       wsClient.on('load.result', (m) => {
-        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null }
+        const p = (m.payload ?? {}) as {
+          ok?: boolean
+          reason?: string | null
+          dialogue?: unknown[]
+        }
         if (p.ok) {
           this.showToast('读档成功')
-          this.textFlow = []
-          this.choice = null
-          this.input = null
-          this.background = null
-          this.characters.clear()
+          this.restoreDialogue(Array.isArray(p.dialogue) ? p.dialogue : [])
         } else {
           this.showToast(p.reason ?? '读档失败')
         }
@@ -228,6 +232,61 @@ export const useGameStore = defineStore('game', {
         this.pushMode('minigame')
         this.activeMinigame = { gameId: p.game_id ?? '', requestId: m.requestId ?? null }
         this.autoAdvance = false
+      })
+    },
+
+    /**
+     * 读档重放：用存档里的对话快照还原画面（文本/背景/立绘）。
+     *
+     * 存档只序列化服务端 GameContext，画面本在前端；不重放就会出现
+     * "数据回来了、文本区只剩 ——"的空屏。重放期间置 restoring=true，
+     * TextFlow 会把快照全文直接铺满，不再逐字重播一遍。
+     */
+    restoreDialogue(entries: unknown[]): void {
+      this.restoring = true
+      this.choice = null
+      this.input = null
+      this.textFlow = []
+      this.background = null
+      this.characters.clear()
+
+      for (const raw of entries) {
+        const e = raw as { type?: string; payload?: Record<string, unknown> }
+        const p = e?.payload ?? {}
+        switch (e?.type) {
+          case 'ui.clear':
+            this.textFlow = []
+            this.background = null
+            this.characters.clear()
+            break
+          case 'ui.text':
+            this.textFlow.push({
+              text: String(p.text ?? ''),
+              color: (p.color as string | null | undefined) ?? null,
+              bold: Boolean(p.bold),
+            })
+            break
+          case 'ui.background_set':
+            this.background = String(p.name ?? '')
+            break
+          case 'ui.character_show':
+            this.characters.set(String(p.char_id ?? ''), {
+              charId: String(p.char_id ?? ''),
+              expression: String(p.expression ?? 'normal'),
+              position: String(p.position ?? 'center'),
+            })
+            break
+          case 'ui.character_hide':
+            this.characters.delete(String(p.char_id ?? ''))
+            break
+          default:
+            break
+        }
+      }
+
+      // 放开 restoring：TextFlow 在 watch 里已按快照全文渲染
+      nextTick(() => {
+        this.restoring = false
       })
     },
 

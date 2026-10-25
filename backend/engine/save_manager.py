@@ -133,6 +133,8 @@ class SaveManager:
         self.base_dir = Path(base_dir) if base_dir else Path("saves")
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._session_start = time.monotonic()
+        # 最近一次读档带出的对话快照（前端重放用）
+        self._last_dialogue: List[Dict[str, Any]] = []
 
     # ── 会话 ──────────────────────────────────────────────────
     def start_session(self) -> None:
@@ -148,6 +150,7 @@ class SaveManager:
         description: str = "",
         screenshot: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        dialogue: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         if not (0 <= slot_id < MAX_SAVE_SLOTS):
             logger.warning("非法槽位: %d", slot_id)
@@ -163,6 +166,9 @@ class SaveManager:
         save_data = {
             "meta": meta.to_dict(),
             **self._ctx.serialize(),
+            # 对话快照：存档点所属事件的显示类消息（text/背景/立绘），
+            # 读档后前端重放，避免只剩空文本区。只存数据无法还原画面。
+            "dialogue": dialogue or [],
         }
         success = self._write_save_file(slot_id, save_data)
         if success:
@@ -181,6 +187,9 @@ class SaveManager:
             if data.get("meta", {}).get("version") != self._read_save_file(slot_id).get("meta", {}).get("version"):
                 self._write_save_file(slot_id, data)
             self._ctx.deserialize(data)
+            # 对话快照（老存档无此字段 → 空列表，前端只清屏）
+            dialogue = data.get("dialogue")
+            self._last_dialogue = dialogue if isinstance(dialogue, list) else []
         except Exception as exc:  # noqa: BLE001
             logger.exception("读档失败: %s", exc)
             return False
@@ -221,8 +230,8 @@ class SaveManager:
         return self.get_save_slots()[slot_id]
 
     # ── 快速存档（槽位 0）─────────────────────────────────────
-    def quick_save(self) -> bool:
-        return self.save(QUICK_SLOT, description="快速存档")
+    def quick_save(self, dialogue: Optional[List[Dict[str, Any]]] = None) -> bool:
+        return self.save(QUICK_SLOT, description="快速存档", dialogue=dialogue)
 
     def quick_load(self) -> bool:
         return self.load(QUICK_SLOT)

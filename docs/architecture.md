@@ -118,8 +118,35 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 背景、选项全在前端 store 里，服务端不知情。中途存档会存出"数据在新位置、画面在半截"的
 不一致档，读回来也无法对齐 —— 因为 **Lua 脚本的执行位置无法序列化**。
 
-> 即"存读档功能在触发对话前使用"。若将来要支持中途存档，需要额外把已发出的对话消息
-> 缓存进存档、读档后由前端重放；脚本执行位置仍只能靠"只在空闲时可存"来保证。
+> 即"存读档功能在触发对话前使用"。
+
+### 4.6 对话快照（读档还原画面）
+
+光存数据不够：画面（文本流/背景/立绘）全在前端 store，只 `deserialize` 数据会导致
+读档后文本区只剩空占位 `——`、背景空、立绘空。
+
+做法：存档额外写入 `dialogue` 段 —— 存档点所属事件发出的**画面类消息**原始列表：
+
+```json
+"dialogue": [
+  {"type": "ui.clear", "payload": {}},
+  {"type": "ui.background_set", "payload": {"name": "shrine", "transition": "fade"}},
+  {"type": "ui.text", "payload": {"text": "――幻想乡，一个被遗忘的世界。", "color": "white", "bold": true}},
+  {"type": "ui.character_show", "payload": {"char_id": "reimu", "expression": "normal"}}
+]
+```
+
+- **记录点**：`DialogueRecorder` 包装 `WSOutput`，旁路保存 `ui.text` / `ui.clear` /
+  `ui.background_set` / `ui.character_show` / `ui.character_hide` / `ui.image_*`
+- **清空时机**：每次触发事件前 `begin()`（`game.start` / `day_advance` / `emit_event` /
+  `on_load`），所以快照 = **最近一个事件的完整对话**，与"存档点在事件边界"一致
+- **读档重放**：`load.result` 带回 `dialogue`，前端 `restoreDialogue()` 重建
+  `textFlow`/`background`/`characters`；期间置 `restoring=true`，TextFlow 直接把快照
+  全文铺满而**不逐字重播**
+- **兼容**：老存档无 `dialogue` 字段 → 空列表，前端只清屏（行为同改造前）
+
+> 脚本执行位置（Lua 栈）仍然无法序列化，所以中途存档依旧被禁止。要让读档后
+> **继续推进剧情**，仍需要新事件触发；对话快照只负责"画面回到存档那一刻"。
 
 > 设计原则：**状态在服务端，视图在前端**。Lua 改状态后引擎主动推送 `status.sync` 全量快照，前端只做展示，无状态同步回写。
 

@@ -33,6 +33,52 @@ def _populate(ctx):
     ctx.set_character_flag("reimu", "met", True)
 
 
+class TestDialogueSnapshot:
+    """对话快照：存档写入 dialogue，读档带回，供前端重放。"""
+
+    def test_dialogue_roundtrip(self, save_manager):
+        mgr, ctx = save_manager
+        _populate(ctx)
+        dialogue = [
+            {"type": "ui.text", "payload": {"text": "灵梦在咖啡店门口等着你。", "color": "white"}},
+            {"type": "ui.background_set", "payload": {"name": "cafe"}},
+            {"type": "ui.character_show", "payload": {"char_id": "reimu", "expression": "normal"}},
+        ]
+        assert mgr.save(2, description="带对话", dialogue=dialogue) is True
+
+        ctx.reset()
+        assert mgr.load(2) is True
+        assert mgr._last_dialogue == dialogue
+
+    def test_load_without_dialogue_yields_empty(self, save_manager, tmp_path):
+        """老存档没有 dialogue 字段 → 读档后为空列表（前端只清屏）。"""
+        mgr, ctx = save_manager
+        _populate(ctx)
+        assert mgr.save(3) is True
+
+        # 手工把 dialogue 段删掉，模拟旧版本存档
+        import json
+
+        path = mgr._slot_path(3)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.pop("dialogue", None)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        ctx.reset()
+        assert mgr.load(3) is True
+        assert mgr._last_dialogue == []
+
+    def test_quick_save_carries_dialogue(self, save_manager):
+        mgr, ctx = save_manager
+        _populate(ctx)
+        dialogue = [{"type": "ui.text", "payload": {"text": "快存内容", "color": None}}]
+        assert mgr.quick_save(dialogue=dialogue) is True
+
+        ctx.reset()
+        assert mgr.quick_load() is True
+        assert mgr._last_dialogue == dialogue
+
+
 class TestSaveLoadRoundtrip:
     def test_roundtrip(self, save_manager):
         mgr, ctx = save_manager

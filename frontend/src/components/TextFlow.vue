@@ -43,6 +43,17 @@ watch(
       store.textIdle = true
       return
     }
+    // 读档重放：快照全文直接显示，不逐字重播
+    if (store.restoring) {
+      cancelAnimationFrame(rafId)
+      confirmed.value = flow.length
+      revealed.value = flow.map((l) => l.text.length)
+      activeIdx.value = -1
+      showContinue.value = false
+      store.textIdle = true
+      scrollToBottom()
+      return
+    }
     while (revealed.value.length < flow.length) revealed.value.push(0)
     // 当前段已打印完且后续行已到 → 显示 ▼（等点击）
     if (activeIdx.value >= 0 && confirmed.value + 1 < flow.length) {

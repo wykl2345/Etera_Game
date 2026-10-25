@@ -154,6 +154,49 @@ def test_abort_frees_game_thread():
     asyncio.run(_run())
 
 
+class TestDialogueRecorder:
+    """DialogueRecorder：只记录画面类消息，控制类不进快照；begin() 清空。"""
+
+    def _mk(self):
+        from engine.script_runner import UIOutput
+        from ws_gateway import DialogueRecorder
+
+        sent = []
+
+        class _Inner(UIOutput):
+            def send(self, msg):
+                sent.append(msg)
+
+        rec = DialogueRecorder(_Inner())
+        return rec, sent
+
+    def test_records_display_messages_only(self):
+        rec, sent = self._mk()
+        rec.send({"type": "ui.text", "payload": {"text": "hi"}})
+        rec.send({"type": "ui.background_set", "payload": {"name": "cafe"}})
+        rec.send({"type": "save.result", "payload": {"ok": True}})   # 控制类
+        rec.send({"type": "status.sync", "payload": {"day": 1}})     # 状态推送
+
+        snap = rec.snapshot()
+        assert [e["type"] for e in snap] == ["ui.text", "ui.background_set"]
+        # 所有消息都要照常转发给真实 output
+        assert len(sent) == 4
+
+    def test_begin_clears_snapshot(self):
+        rec, _ = self._mk()
+        rec.send({"type": "ui.text", "payload": {"text": "上一事件"}})
+        assert len(rec.snapshot()) == 1
+        rec.begin()
+        assert rec.snapshot() == []
+
+    def test_snapshot_is_copy(self):
+        rec, _ = self._mk()
+        rec.send({"type": "ui.text", "payload": {"text": "x"}})
+        snap = rec.snapshot()
+        snap.clear()
+        assert len(rec.snapshot()) == 1, "快照应为副本，外部修改不影响内部"
+
+
 class TestPersistBlocked:
     """存读档忙状态判定（对话/选项进行中禁止存读档）。"""
 

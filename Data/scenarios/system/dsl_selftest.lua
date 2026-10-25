@@ -31,13 +31,30 @@ return {
         local pass, fail = 0, 0
         local failed = {}
 
+        -- 通过项静默计数（避免刷屏）；失败项立即输出
         local function ok(label, extra)
             pass = pass + 1
-            local suffix = ""
-            if extra ~= nil then
-                suffix = " = " .. tostring(extra)
+        end
+
+        -- 段落级汇总：每段结束时输出一行 x/y
+        local _section = ""
+        local _p0, _f0 = 0, 0
+        local function tally()
+            if _section == "" then
+                return
             end
-            ui.text("   [OK] " .. label .. suffix, "green")
+            local p = pass - _p0
+            local f = fail - _f0
+            local mark, tone = "✓", "green"
+            if f > 0 then
+                mark, tone = "✗", "red"
+            end
+            ui.text("  " .. mark .. " " .. _section .. "  " .. p .. "/" .. (p + f), tone)
+        end
+        local function begin(name)
+            tally()
+            _section = name
+            _p0, _f0 = pass, fail
         end
 
         local function ng(label, expected, actual)
@@ -91,7 +108,7 @@ return {
         ui.show_character("reimu", "normal", "right")
         ui.play_music("selftest_bgm", 0.5, true)
 
-        ui.text("【一】显示与音频", "yellow", true)
+        begin("一、显示与音频")
         call("ui.text(text,color,bold)", function() ui.text("  文本/颜色/加粗", "magenta", true) end)
         call("ui.show_image(name,pos,fade)", function() ui.show_image("selftest_chart", "left", true) end)
         call("ui.hide_image(name,fade)", function() ui.hide_image("selftest_chart") end)
@@ -107,7 +124,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 二、world.* （6）
         -- ═══════════════════════════════════════════════
-        ui.text("【二】世界状态", "yellow", true)
+        begin("二、世界状态")
         check("world.get_day() >= 1", orig_day >= 1, true)
 
         world.set_day(orig_day + 3)
@@ -130,7 +147,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 三、data.* 角色属性与好感（6）
         -- ═══════════════════════════════════════════════
-        ui.text("【三】角色属性与好感", "yellow", true)
+        begin("三、角色属性与好感")
 
         local reimu = data.get_chara("reimu")
         check("data.get_chara(reimu) 非 nil", reimu ~= nil, true)
@@ -187,7 +204,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 四、data.* Flag 命名空间（3 + 隔离/保护）
         -- ═══════════════════════════════════════════════
-        ui.text("【四】Flag 命名空间", "yellow", true)
+        begin("四、Flag 命名空间")
 
         check("data.set_flag -> true", data.set_flag("selftest", "k", 42), true)
         check("  -> get_flag", data.get_flag("selftest", "k"), 42)
@@ -214,7 +231,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 五、data.* 背包（4）
         -- ═══════════════════════════════════════════════
-        ui.text("【五】背包", "yellow", true)
+        begin("五、背包")
 
         check("data.add_item(id,3) -> true", data.add_item("selftest_item", 3), true)
         check("  -> get_item_count", data.get_item_count("selftest_item"), 3)
@@ -236,7 +253,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 六、event.* （3）
         -- ═══════════════════════════════════════════════
-        ui.text("【六】事件", "yellow", true)
+        begin("六、事件")
 
         local fired = 0
         event.listen("custom:selftest_ping", function() fired = fired + 1 end)
@@ -269,7 +286,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 七、util.* （5）
         -- ═══════════════════════════════════════════════
-        ui.text("【七】工具", "yellow", true)
+        begin("七、工具")
 
         local r = util.random()
         check("util.random() 落在 [0,1)", (r >= 0) and (r < 1), true)
@@ -287,7 +304,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 八、阻塞交互（ui.ask_choice / ui.ask_input）
         -- ═══════════════════════════════════════════════
-        ui.text("【八】玩家交互", "yellow", true)
+        begin("八、玩家交互")
         ui.text("灵梦：最后，回答我两个问题。", "pink")
 
         local c = ui.ask_choice({ "（干脆地）准备好了", "（犹豫）还没", "（沉默）" })
@@ -301,6 +318,7 @@ return {
         -- ═══════════════════════════════════════════════
         -- 九、汇总
         -- ═══════════════════════════════════════════════
+        tally()
         ui.text("", "white")
         ui.text("―― 检验结果 ――", "cyan", true)
         local tone = "green"
@@ -314,9 +332,8 @@ return {
             end
         end
 
-        ui.text("【已知契约偏差（记录，不判失败）】", "yellow", true)
-        ui.text("  · world.set_time / set_location 不自动 emit on_time_change / on_location_change", "gray")
-        ui.text("  · event.after_days 为惰性占位，不会真正定时触发", "gray")
+        ui.text("  注：set_time/set_location 不 emit 事件、after_days 为惰性占位"
+                .. "（见 tools/README.md）", "gray")
 
         -- ── 恢复状态 ────────────────────────────────────
         world.set_day(orig_day)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
@@ -33,6 +34,44 @@ class WSOutput(UIOutput):
         if self._queue is None or self._loop is None:
             return
         asyncio.run_coroutine_threadsafe(self._queue.put(msg), self._loop)
+
+
+class DialogueRecorder(UIOutput):
+    """记录显示类消息，供存档写入对话快照。
+
+    包装真实 output：所有消息照常转发，只旁路保存"画面类"消息
+    （文本/背景/立绘/图片/清屏）。控制类消息（save.result 等）不记录。
+
+    生命周期：每次触发事件前调用 begin() 清空 —— 因此快照内容 = 最近一个
+    事件产生的完整对话，与"存档点在事件边界"的约束一致。
+    """
+
+    KEEP_TYPES = frozenset({
+        "ui.text", "ui.clear",
+        "ui.background_set",
+        "ui.character_show", "ui.character_hide",
+        "ui.image_show", "ui.image_hide",
+    })
+
+    def __init__(self, inner: UIOutput) -> None:
+        self._inner = inner
+        self._entries: list = []
+        self._lock = threading.Lock()
+
+    def send(self, msg: Dict[str, Any]) -> None:
+        self._inner.send(msg)
+        if msg.get("type") in self.KEEP_TYPES:
+            with self._lock:
+                self._entries.append(msg)
+
+    def begin(self) -> None:
+        """新事件开始：清空快照。"""
+        with self._lock:
+            self._entries.clear()
+
+    def snapshot(self) -> list:
+        with self._lock:
+            return list(self._entries)
 
 
 async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
@@ -91,8 +130,11 @@ async def handle_connection(
     output.attach(loop, queue)
     sender_task = asyncio.create_task(_sender(websocket, queue))
 
+    # 对话快照记录器（包装 output；控制类消息不进快照）
+    recorder = DialogueRecorder(output)
+
     # 每连接独立引擎实例（会话隔离）
-    bundle = init_engine(output, scripts_dir=scripts_dir,
+    bundle = init_engine(recorder, scripts_dir=scripts_dir,
                          characters_dir=characters_dir, saves_dir=saves_dir,
                          debug_mode=debug_mode)
 
@@ -117,6 +159,7 @@ async def handle_connection(
 
             def start_new() -> None:
                 reset_game(bundle)
+                recorder.begin()
                 bundle.bus.emit("on_game_start")
 
             active_game = loop.run_in_executor(executor, start_new)
@@ -127,6 +170,7 @@ async def handle_connection(
         elif mtype == "game.day_advance":
             # 日循环：day+1 → on_day_end → on_day_begin（日常事件触发点）
             def advance() -> None:
+                recorder.begin()
                 bundle.ctx.set_day(bundle.ctx.get_day() + 1)
                 bundle.bus.emit("on_day_end")
                 bundle.bus.emit("on_day_begin")
@@ -145,6 +189,7 @@ async def handle_connection(
                 output.send({"type": "event.result",
                              "payload": {"ok": False, "event": event_name, "reason": blocked}})
             else:
+                recorder.begin()
                 loop.run_in_executor(executor, bundle.bus.emit, event_name)
                 output.send({"type": "event.result",
                              "payload": {"ok": True, "event": event_name}})
@@ -156,7 +201,8 @@ async def handle_connection(
                              "payload": {"ok": False, "slot_id": slot_id, "reason": blocked}})
             else:
                 ok = bundle.save_manager.save(
-                    slot_id, description=str(payload.get("description", ""))
+                    slot_id, description=str(payload.get("description", "")),
+                    dialogue=recorder.snapshot(),
                 )
                 output.send({"type": "save.result",
                              "payload": {"ok": ok, "slot_id": slot_id,
@@ -172,7 +218,8 @@ async def handle_connection(
                 ok = bundle.save_manager.load(slot_id)
                 output.send({"type": "load.result",
                              "payload": {"ok": ok, "slot_id": slot_id,
-                                         "reason": None if ok else "读取存档失败"}})
+                                         "reason": None if ok else "读取存档失败",
+                                         "dialogue": bundle.save_manager._last_dialogue}})
                 if ok:
                     bundle.api._push_status()
                     # 触发 on_load 系统事件：剧本可监听恢复剧情
@@ -183,7 +230,7 @@ async def handle_connection(
                 output.send({"type": "save.result",
                              "payload": {"ok": False, "slot_id": 0, "quick": True, "reason": blocked}})
             else:
-                ok = bundle.save_manager.quick_save()
+                ok = bundle.save_manager.quick_save(dialogue=recorder.snapshot())
                 output.send({"type": "save.result",
                              "payload": {"ok": ok, "slot_id": 0, "quick": True,
                                          "reason": None if ok else "写入存档失败"}})
@@ -197,7 +244,8 @@ async def handle_connection(
                 ok = bundle.save_manager.quick_load()
                 output.send({"type": "load.result",
                              "payload": {"ok": ok, "slot_id": 0, "quick": True,
-                                         "reason": None if ok else "读取存档失败"}})
+                                         "reason": None if ok else "读取存档失败",
+                                         "dialogue": bundle.save_manager._last_dialogue}})
                 if ok:
                     bundle.api._push_status()
         elif mtype == "game.list_saves":
