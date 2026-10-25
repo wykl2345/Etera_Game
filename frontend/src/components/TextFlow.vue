@@ -140,8 +140,11 @@ function onRevealDone(): void {
     // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
     if (confirmed.value < textFlow.value.length) {
       startNext()
+    } else if (store.eventFinished) {
+      // 全部播完且事件已结束 → 提示玩家点击返回 Hub
+      showContinue.value = true
     }
-    // 无后续行：等新行到达后自动继续（watch 触发 startNext）
+    // 否则等新行到达后自动继续（watch 触发 startNext）
   } else {
     // 总是等待点击确认（无论后续行是否已到达）——每段一读，点击推进
     showContinue.value = true
@@ -155,6 +158,11 @@ function onAdvance(): void {
     showContinue.value = false
     if (confirmed.value < textFlow.value.length) {
       startNext()
+      return
+    }
+    // 没有更多段落，且本段事件已播完 → 玩家点击确认后回 Hub
+    if (store.eventFinished) {
+      store.enterHub()
     }
     return
   }
@@ -167,6 +175,18 @@ function onAdvance(): void {
     onRevealDone()
   }
 }
+
+// 事件结束信号可能晚于最后一段打印完成 —— 此时 onRevealDone 已经跑过，
+// 不会再有推进时机，需要在这里补一次"显示点击返回"。
+watch(
+  () => store.eventFinished,
+  (finished) => {
+    if (finished && activeIdx.value === -1 && confirmed.value >= textFlow.value.length
+        && textFlow.value.length > 0) {
+      showContinue.value = true
+    }
+  },
+)
 
 // GameScreen 点击委托 → 推进文本（背景/文本区均可点击）
 watch(
@@ -209,7 +229,9 @@ onUnmounted(() => cancelAnimationFrame(rafId))
       {{ displayText(line, i) }}
     </p>
     <p v-if="!textFlow.length" class="placeholder">——</p>
-    <p v-if="showContinue" class="continue-hint">▼ 点击继续</p>
+    <p v-if="showContinue" class="continue-hint">
+      {{ store.eventFinished ? '▼ 点击返回' : '▼ 点击继续' }}
+    </p>
   </div>
 </template>
 

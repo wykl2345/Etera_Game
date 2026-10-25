@@ -376,10 +376,10 @@ export const useGameStore = defineStore('game', {
         }
       })
 
-      // 剧本播完 → 等最后一段文本播完，自动回 Hub（不用玩家按返回）
+      // 剧本播完：只标记状态，不自动切界面。
+      // 由玩家点击（点击委托 → TextFlow.onAdvance）确认后回 Hub。
       wsClient.on('event.done', () => {
         this.eventFinished = true
-        this.scheduleHubReturn()
       })
 
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
@@ -523,30 +523,6 @@ export const useGameStore = defineStore('game', {
     closeMenu(): void {
       // 关悬浮面板，回到原界面（uiMode 从未改变）
       this.panel = null
-    },
-
-    /**
-     * 剧本播完后自动回 Hub。
-     *
-     * 不能立刻切：逐字打印比后端慢，剧本结束时前端可能还在播最后一段。
-     * 所以轮询等 textIdle（无打印、无待确认段落），并额外停留 1s 让玩家看完。
-     */
-    scheduleHubReturn(): void {
-      let waited = 0
-      const tick = () => {
-        if (this.uiMode !== 'game') return        // 玩家已手动离开
-        if (this.textIdle && waited >= 1000) {
-          this.enterHub()
-          return
-        }
-        waited += 250
-        if (waited > 20000) {                     // 兜底：20s 后强制回
-          this.enterHub()
-          return
-        }
-        setTimeout(tick, 250)
-      }
-      setTimeout(tick, 250)
     },
 
     /** 进入 Hub（行动枢纽）：清空叙事区、拉取按钮列表 */

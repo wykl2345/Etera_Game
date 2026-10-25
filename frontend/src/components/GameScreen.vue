@@ -58,7 +58,7 @@ const { uiMode, toast } = storeToRefs(store)
       <button class="tool-btn" @click="store.openSettings">设置</button>
       <button
         class="tool-btn tool-btn--accent"
-        :title="store.eventFinished ? '本段已结束，回到行动界面' : '回到行动界面（当前对话将中止）'"
+        :title="store.eventFinished ? '本段已结束，回到行动界面' : '提前结束本段并回到行动界面'"
         @click="store.enterHub()"
       >返回</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
