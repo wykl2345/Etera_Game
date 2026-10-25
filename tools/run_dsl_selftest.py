@@ -1,13 +1,14 @@
-"""DSL 全指令自检执行器。
+"""DSL 全指令自检执行器（命令行版）。
 
-用内存 output 驱动 tools/scenarios/dsl_selftest.lua，收集全部 UI 消息并汇总
-[OK]/[NG] 结果，最后核对游戏状态是否被剧本恢复原值。
+用内存 output 驱动 Data/scenarios/system/dsl_selftest.lua，收集全部 UI 消息
+并汇总 [OK]/[NG] 结果，最后核对游戏状态是否被剧本恢复原值。
 
 用法（在项目根执行）：
     .venv/bin/python tools/run_dsl_selftest.py
 
-场景目录固定为 tools/scenarios（只含自检剧本），因此不会加载 Data/scenarios
-下的正式剧本，序章等剧情不会干扰输出。
+与游戏内「自检」按钮跑的是同一个剧本、同一条事件（custom:run_selftest）。
+这里用内存 output 而非 WS，所以不需要启动服务器或浏览器。
+序章等剧本只监听 on_game_start，不会响应本事件，因此不干扰输出。
 """
 from __future__ import annotations
 
@@ -26,8 +27,9 @@ from engine.script_runner import UIOutput  # noqa: E402
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
-SCENARIOS_DIR = Path(__file__).resolve().parent / "scenarios"
+SCENARIOS_DIR = ROOT / "Data" / "scenarios"
 CHARACTERS_DIR = ROOT / "Data" / "characters"
+SELFTEST_EVENT = "custom:run_selftest"
 BLOCKING = ("ui.ask_choice", "ui.ask_input", "minigame.start")
 
 # 自动应答：选择第 2 项、输入「测试者」
@@ -78,7 +80,7 @@ def main() -> int:
 
     def run() -> None:
         try:
-            bundle.bus.emit("on_game_start")
+            bundle.bus.emit(SELFTEST_EVENT)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
@@ -145,7 +147,7 @@ def main() -> int:
         if old != new:
             restore_ok = False
         print(f"  [{mark}] {key}: {old} -> {new}")
-    print(f"selftest.done = {ctx.get_global_flag('selftest', 'done', None)}")
+    print(f"selftest.last_run_day = {ctx.get_global_flag('selftest', 'last_run_day', None)}")
 
     success = (ng_n == 0) and not errors and not t.is_alive() and restore_ok
     print("=" * 72)

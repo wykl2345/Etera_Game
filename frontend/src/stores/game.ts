@@ -114,6 +114,22 @@ export const useGameStore = defineStore('game', {
     autoAdvance: false,
   }),
 
+  getters: {
+    /**
+     * 存读档是否可用 —— 只在脚本空闲时允许。
+     *
+     * 原因：存档只序列化后端 GameContext，对话文本/立绘/选项都在前端，
+     * 中途存档会存出"数据在前、画面在半截"的不一致档。所以要求
+     * 无选项/输入/小游戏等待，且文本已播完（textIdle）才能存读档。
+     */
+    canPersist(state): boolean {
+      return state.choice === null
+        && state.input === null
+        && state.activeMinigame === null
+        && state.textIdle
+    },
+  },
+
   actions: {
     /** 建立 WS 连接并注册协议处理器 */
     connect(): void {
@@ -185,11 +201,11 @@ export const useGameStore = defineStore('game', {
         this.saves = ((m.payload ?? {}).slots ?? []) as unknown as SaveSlotInfo[]
       })
       wsClient.on('save.result', (m) => {
-        const p = (m.payload ?? {}) as { ok?: boolean; slot_id?: number }
-        this.showToast(p.ok ? `已保存到槽位 ${p.slot_id}` : '保存失败')
+        const p = (m.payload ?? {}) as { ok?: boolean; slot_id?: number; reason?: string | null }
+        this.showToast(p.ok ? `已保存到槽位 ${p.slot_id}` : (p.reason ?? '保存失败'))
       })
       wsClient.on('load.result', (m) => {
-        const p = (m.payload ?? {}) as { ok?: boolean }
+        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null }
         if (p.ok) {
           this.showToast('读档成功')
           this.textFlow = []
@@ -198,8 +214,13 @@ export const useGameStore = defineStore('game', {
           this.background = null
           this.characters.clear()
         } else {
-          this.showToast('读档失败')
+          this.showToast(p.reason ?? '读档失败')
         }
+      })
+      // 手动触发事件的结果（工具条「自检」等）
+      wsClient.on('event.result', (m) => {
+        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; event?: string }
+        if (!p.ok) this.showToast(p.reason ?? '触发失败')
       })
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
       wsClient.on('minigame.start', (m) => {
@@ -258,6 +279,18 @@ export const useGameStore = defineStore('game', {
 
     closeMenu(): void {
       this.popMode()
+    },
+
+    /** 工具条「自检」：触发 DSL 全指令自检剧本（custom:run_selftest） */
+    runSelftest(): void {
+      if (!this.canPersist) {
+        this.showToast('对话进行中，请先完成当前对话')
+        return
+      }
+      wsClient.send({
+        type: 'game.emit_event',
+        payload: { event: 'custom:run_selftest' },
+      })
     },
 
     openSettings(): void {

@@ -32,11 +32,34 @@ const { uiMode, toast } = storeToRefs(store)
 
     <!-- 底部工具条（系统界面，Web 化） -->
     <div v-if="uiMode === 'game'" class="toolbar" @click.stop>
-      <button class="tool-btn" @click="store.openSave">保存</button>
-      <button class="tool-btn" @click="store.openLoad">读取</button>
-      <button class="tool-btn" @click="store.quickSave" title="快速存档">快存</button>
-      <button class="tool-btn" @click="store.quickLoad" title="快速读取">快读</button>
+      <!-- 存读档：对话/选项/小游戏进行中置灰（存档只含后端数据，中途存会存出半截画面） -->
+      <button
+        class="tool-btn" :disabled="!store.canPersist"
+        :title="store.canPersist ? '存档到槽位' : '对话进行中，请先完成当前对话'"
+        @click="store.openSave"
+      >保存</button>
+      <button
+        class="tool-btn" :disabled="!store.canPersist"
+        :title="store.canPersist ? '读取存档' : '对话进行中，请先完成当前对话'"
+        @click="store.openLoad"
+      >读取</button>
+      <button
+        class="tool-btn" :disabled="!store.canPersist"
+        :title="store.canPersist ? '快速存档' : '对话进行中，请先完成当前对话'"
+        @click="store.quickSave"
+      >快存</button>
+      <button
+        class="tool-btn" :disabled="!store.canPersist"
+        :title="store.canPersist ? '快速读取' : '对话进行中，请先完成当前对话'"
+        @click="store.quickLoad"
+      >快读</button>
       <button class="tool-btn" @click="store.openSettings">设置</button>
+      <!-- 调试工具：主动触发 DSL 全指令自检（会临时改动状态并恢复） -->
+      <button
+        class="tool-btn" :disabled="!store.canPersist"
+        title="运行 DSL 全指令自检（会临时改动并恢复世界状态）"
+        @click="store.runSelftest"
+      >自检</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
     </div>
 
@@ -100,9 +123,13 @@ const { uiMode, toast } = storeToRefs(store)
   transition: all 0.15s ease;
 }
 
-.tool-btn:hover {
+.tool-btn:hover:not(:disabled) {
   color: var(--accent);
   background: #1d232c;
+}
+.tool-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .toast {

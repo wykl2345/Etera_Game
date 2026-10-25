@@ -69,7 +69,8 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 | 方向 | 类型 | 示例 |
 |---|---|---|
 | 引擎 → 前端（推送） | `ui.*` 指令、`status.update`、`event.log` | `ui.text`、`ui.show_image`、`status.sync` |
-| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`minigame.result`、`game.start`、`game.day_advance`、`game.save` |
+| 前端 → 引擎（输入） | 玩家动作 | `choice.made`、`input.submit`、`minigame.result`、`game.start`、`game.day_advance`、`game.save`、`game.emit_event` |
+| 引擎 → 前端（回执） | 动作结果 | `save.result`、`load.result`、`event.result`（均带 `ok`/`reason`） |
 
 ### 4.2 消息结构
 
@@ -103,7 +104,22 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 | `ui.ask_input` | 请求-响应 | `ui.ask_input` ↔ `input.submit` |
 | `minigame.start` | 请求-响应 | `minigame.start` ↔ `minigame.result`（结果回传 Lua） |
 | `world.*` / `data.*` | 服务端内部 | 无消息，状态变更后推 `status.sync` |
-| `event.emit` | → | `event.log`（前端日志/调试面板） |
+| `event.emit` | 服务端内部 | 同步调用所有监听者（含 Lua handler），payload 装进 `ctx.data` |
+| 前端主动触发剧本 | ← | `game.emit_event{event}` → 后端 `bus.emit(event)` → `event.result` 回执 |
+
+### 4.5 存读档一致性约束
+
+**只有脚本空闲时才能存读档**（`_persist_blocked`，服务端强制，前端按钮同步置灰）：
+
+- 拒绝条件：`scheduler.is_waiting()`（有 `ask_choice`/`ask_input`/`minigame.start` 挂起）
+- 拒绝时返回 `save.result` / `load.result`，`ok=false` 并附 `reason`
+
+原因：存档只序列化服务端 `GameContext`（world/player/characters/flags），而对话文本、立绘、
+背景、选项全在前端 store 里，服务端不知情。中途存档会存出"数据在新位置、画面在半截"的
+不一致档，读回来也无法对齐 —— 因为 **Lua 脚本的执行位置无法序列化**。
+
+> 即"存读档功能在触发对话前使用"。若将来要支持中途存档，需要额外把已发出的对话消息
+> 缓存进存档、读档后由前端重放；脚本执行位置仍只能靠"只在空闲时可存"来保证。
 
 > 设计原则：**状态在服务端，视图在前端**。Lua 改状态后引擎主动推送 `status.sync` 全量快照，前端只做展示，无状态同步回写。
 

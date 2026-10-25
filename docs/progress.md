@@ -10,7 +10,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 
 ```
 ✅ Phase 1 后端引擎     ✅ Phase 2 最小前端     ✅ Phase 3 存档/状态栏     ✅ Phase 4 打磨/小游戏
-✅ 后端 109 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
+✅ 后端 113 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
 ```
 
 ## 二、完成度评估
@@ -19,12 +19,12 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 |---|---|---|
 | 后端引擎核心 | **95%** | Lua 沙箱（lupa54 + 安全限制 + Mock 降级）、41 指令 API 白名单、线程池调度器（Future 挂起/恢复）、事件总线、分层状态（core 保护）、剧本加载、GameContext 序列化 |
 | 后端存档系统 | **90%** | 版本化 JSON（2.0.0）+ 迁移链（1.0→2.0）+ 原子写入 + 备份 + 20 槽 + 快速存档；断线恢复未做（记录意图） |
-| WS 网关/协议 | **90%** | 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息；无断线重连 |
+| WS 网关/协议 | **92%** | 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息、`game.emit_event`（前端主动触发剧本）、存读档一致性校验（对话中拒绝存读档）；无断线重连 |
 | 前端叙事界面 | **85%** | 文本流（逐字打印 + 段落点击推进 + 快进）、选项、立绘/背景占位、输入、小游戏触发 |
 | 前端系统界面 | **80%** | 主菜单（Web 现代化）、状态栏（HP/MP/体力条）、存档界面（槽位/删除/拖拽）、设置面板（localStorage） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
 | 内容资产 | **10%** | 4 个 Lua 剧本（v1 的 3 个 + 演示 1 个）；美术/音频素材全空（占位显示） |
-| 测试 | **88%** | 后端 109 项（事件/状态/调度/存档/WS 端到端 + event payload 回归）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
+| 测试 | **90%** | 后端 113 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
 | 文档体系 | **90%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×6 / DSL 契约 |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~10%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补素材 / 加小游戏）。
@@ -56,6 +56,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | websockets 14+ API 变更 | 旧 `(ws, path)` 回调移除、新 asyncio 命名空间 | `from websockets.asyncio.server import serve`，单参数回调 |
 | WS 网关 `game.start` await 死锁 | `asyncio.to_thread` 阻塞消息循环，收不到 choice.made | 改为 fire-and-forget 提交 executor（不 await） |
 | 单 worker executor 被挂起脚本占用 | 回主菜单后再次 game.start 排队永不执行 → 空对话 | `game.abort` 消息：stop_all 中止挂起脚本释放线程 |
+| 挂起中重启/断开 → 日志 ERROR `Future exception was never retrieved` | 选项界面点「开始新游戏」或直接关标签页时后端打印 `ScriptAbortedError` 堆栈（功能正常，纯噪音） | **未修**：脚本线程的 Future 异常无人 retrieve；需在 executor 提交处吞掉/记录已知中止异常 |
 | 新游戏不重置状态 | 二次 game.start 时 intro_completed 残留 → 序章不触发 | `reset_game`（stop_all + ctx.reset + 重载角色） |
 
 ### 前端 / Vue 类
@@ -68,6 +69,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 点击区域过窄 | 只能在文本区点击推进 | 全画面点击委托（GameScreen advanceText）+ 交互组件 .stop 防误触 |
 | Pinia 泛型索引赋值 | `this[key] = value` TS 报错 | 用 `$patch` |
 | 存档界面白色滚动条/横条 | 白底粗轨道 + 不该有的横滚条 | 自定义细线滚动条（透明 track）+ `overflow-x: hidden` |
+| 对话中途存档存出半截画面 | 存档只序列化后端 GameContext，对话/立绘/选项在前端 store，读档后数据对不上画面 | 服务端 `_persist_blocked` 强制拒绝 + 前端按钮按 `canPersist` 置灰，只在脚本空闲时可存读档 |
 
 ### 文档 / 流程类
 | 坑 | 现象 | 解决 |
@@ -103,6 +105,8 @@ git show pre-web-refactor:tests/test_event_bus.py
 
 - **内容**：剧本数量少（4 个）、美术素材全空、音频素材全空
 - **存档断线恢复**：记录意图未实现（体验优化，`docs/requirements.md` §5.6）
+- **对话中途存档**：当前禁止（脚本执行位置无法序列化）；若要支持，需把已发对话消息缓存进存档并由前端重放，见 `docs/architecture.md` §4.5
+- **挂起中重启的日志噪音**：`Future exception was never retrieved`，功能正常但应吞掉（见踩坑表）
 - **前端自动化测试**：无（e2e-check.mjs 为手工联调脚本）
 - **小游戏**：仅 1 个原型；肉鸽（杀戮尖塔式）未开始
 - **设置面板**：音频音量已接（WebAudio），但无真实素材验证

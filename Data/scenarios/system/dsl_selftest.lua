@@ -1,5 +1,10 @@
--- 系统剧本：DSL 全指令自检
+-- 系统剧本：DSL 全指令自检（主动触发）
 -- 主题：博丽神社·修行成果检验
+--
+-- 触发方式：游戏内工具条「自检」按钮
+--   前端 game.emit_event{event="custom:run_selftest"}
+--   → 后端 bus.emit("custom:run_selftest") → 本剧本响应
+-- 不挂 on_game_start：对话应由玩家主动触发，而不是开局强制插入。
 --
 -- 覆盖范围（40 个，不含 minigame.*）：
 --   ui.*     13  text/clear/show_image/hide_image/play_sound/stop_sound
@@ -15,17 +20,13 @@
 -- 每条指令用 pcall 包住以捕获异常；有返回值的用 check 比对契约。
 -- 结尾输出汇总，并把被改动的游戏状态恢复原值。
 --
--- 注：本剧本在开发阶段默认启用（每次新游戏跑一遍）。上线前应改为 flag 门控或移除。
+-- 自检会临时改动世界/属性/背包，结束时全部恢复原值，可重复触发。
 
 return {
-    on_event = "on_game_start",
+    on_event = "custom:run_selftest",
 
     execute = function()
-        -- 自检仅跑一次
-        if data.get_flag("selftest", "done", false) then
-            return
-        end
-
+        -- 主动触发，每次点击都完整跑一遍（状态会恢复，可重复）
         -- ── 计数与断言工具 ──────────────────────────────
         local pass, fail = 0, 0
         local failed = {}
@@ -330,6 +331,6 @@ return {
         ui.stop_music(true)
         ui.text("灵梦：行了，出发吧。", "pink")
 
-        data.set_flag("selftest", "done", true)
+        data.set_flag("selftest", "last_run_day", world.get_day())
     end
 }

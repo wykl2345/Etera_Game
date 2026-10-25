@@ -154,6 +154,152 @@ def test_abort_frees_game_thread():
     asyncio.run(_run())
 
 
+class TestPersistBlocked:
+    """存读档忙状态判定（对话/选项进行中禁止存读档）。"""
+
+    def test_allows_when_idle(self):
+        from ws_gateway import _persist_blocked
+
+        class _Sched:
+            def is_waiting(self):
+                return False
+
+        class _Bundle:
+            scheduler = _Sched()
+
+        assert _persist_blocked(_Bundle()) is None
+
+    def test_blocks_when_waiting(self):
+        from ws_gateway import _persist_blocked
+
+        class _Sched:
+            def is_waiting(self):
+                return True
+
+        class _Bundle:
+            scheduler = _Sched()
+
+        reason = _persist_blocked(_Bundle())
+        assert reason is not None
+        assert "对话进行中" in reason
+
+
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_save_rejected_while_waiting_choice(tmp_path):
+    """序章挂起在选项时存档 → 必须被拒（此时存档只含数据，会存出半截画面）。"""
+
+    async def _run():
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        async def handler(ws):
+            await handle_connection(
+                ws, str(SCRIPTS_DIR), str(CHARACTERS_DIR), saves_dir=str(tmp_path)
+            )
+
+        server = await serve(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        task = asyncio.create_task(server.serve_forever())
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                assert choice is not None
+
+                # 对话进行中存档 → 拒绝并给出原因
+                await ws.send(json.dumps({"type": "game.save", "payload": {"slot_id": 3}}))
+                res = await _recv_until(ws, "save.result", timeout=5)
+                assert res["payload"]["ok"] is False
+                assert "对话进行中" in (res["payload"].get("reason") or "")
+
+                # 快存同样被拒
+                await ws.send(json.dumps({"type": "game.quick_save"}))
+                res2 = await _recv_until(ws, "save.result", timeout=5)
+                assert res2["payload"]["ok"] is False
+
+                # 确认没有真的写出存档文件
+                assert not list(tmp_path.glob("*.json"))
+
+                # 完成序章后（脚本空闲）存档应成功
+                await ws.send(json.dumps({
+                    "type": "choice.made",
+                    "requestId": choice["requestId"],
+                    "payload": {"index": 1},
+                }))
+                await _collect(ws, 1.5)
+                await ws.send(json.dumps({"type": "game.save", "payload": {"slot_id": 3}}))
+                deadline_ok = False
+                for _ in range(40):
+                    msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                    got = json.loads(msg)
+                    if got.get("type") == "save.result":
+                        deadline_ok = bool(got["payload"]["ok"])
+                        break
+                assert deadline_ok, "空闲时存档应成功"
+        finally:
+            server.close()
+            await server.wait_closed()
+            task.cancel()
+
+    asyncio.run(_run())
+
+
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_emit_event_runs_selftest_scenario(tmp_path):
+    """game.emit_event → custom:run_selftest → 剧本主动跑起来（不再靠 on_game_start 强插）。"""
+
+    async def _run():
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        async def handler(ws):
+            await handle_connection(
+                ws, str(SCRIPTS_DIR), str(CHARACTERS_DIR), saves_dir=str(tmp_path)
+            )
+
+        server = await serve(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        task = asyncio.create_task(server.serve_forever())
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice = await _recv_until(ws, "ui.ask_choice", timeout=8)
+
+                # 对话进行中触发 → 被拒
+                await ws.send(json.dumps({
+                    "type": "game.emit_event",
+                    "payload": {"event": "custom:run_selftest"},
+                }))
+                rejected = await _recv_until(ws, "event.result", timeout=5)
+                assert rejected["payload"]["ok"] is False
+
+                # 结束序章 → 空闲后触发 → 成功
+                await ws.send(json.dumps({
+                    "type": "choice.made",
+                    "requestId": choice["requestId"],
+                    "payload": {"index": 1},
+                }))
+                await _collect(ws, 1.5)
+
+                await ws.send(json.dumps({
+                    "type": "game.emit_event",
+                    "payload": {"event": "custom:run_selftest"},
+                }))
+                ok = await _recv_until(ws, "event.result", timeout=5)
+                assert ok["payload"]["ok"] is True
+
+                # 剧本应真的开始输出自检标题
+                collected = await _collect(ws, 2.5)
+                texts = [m["payload"]["text"] for m in collected if m.get("type") == "ui.text"]
+                assert any("修行成果检验" in t for t in texts), f"未收到自检标题: {texts[:8]}"
+        finally:
+            server.close()
+            await server.wait_closed()
+            task.cancel()
+
+    asyncio.run(_run())
+
+
 def test_static_server_404_on_empty_dir(tmp_path):
     """静态资源服务：空目录请求返回 404（不崩溃）。"""
     from main import start_static_server

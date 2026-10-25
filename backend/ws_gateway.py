@@ -64,6 +64,19 @@ def _send_saves_list(bundle: Any, output: UIOutput) -> None:
     output.send({"type": "saves.list", "payload": {"slots": slots}})
 
 
+def _persist_blocked(bundle: Any) -> Optional[str]:
+    """对话/交互进行中禁止存读档。
+
+    原因：存档只序列化 GameContext（world/player/characters/flags），而对话
+    文本、立绘、选项全在前端 store 里，后端不知道。此时存档会存出"数据在新
+    位置、画面在半截"的不一致档，读回来也无法对齐。所以要求脚本空闲时才能
+    存读档 —— 即"在触发对话前使用"。
+    """
+    if bundle.scheduler.is_waiting():
+        return "对话进行中（等待选择/输入），请先完成当前对话"
+    return None
+
+
 async def handle_connection(
     websocket: Any,
     scripts_dir: str,
@@ -120,30 +133,73 @@ async def handle_connection(
                 bundle.api._push_status()
 
             loop.run_in_executor(executor, advance)
+        elif mtype == "game.emit_event":
+            # 前端主动触发自定义事件（如工具条「自检」→ custom:run_selftest）。
+            # 与 game.start 同理不 await：剧本可能阻塞在 ask_choice。
+            event_name = str(payload.get("event", "")).strip()
+            blocked = _persist_blocked(bundle)
+            if not event_name:
+                output.send({"type": "event.result",
+                             "payload": {"ok": False, "reason": "缺少 event 名"}})
+            elif blocked:
+                output.send({"type": "event.result",
+                             "payload": {"ok": False, "event": event_name, "reason": blocked}})
+            else:
+                loop.run_in_executor(executor, bundle.bus.emit, event_name)
+                output.send({"type": "event.result",
+                             "payload": {"ok": True, "event": event_name}})
         elif mtype == "game.save":
             slot_id = int(payload.get("slot_id", 0))
-            ok = bundle.save_manager.save(
-                slot_id, description=str(payload.get("description", ""))
-            )
-            output.send({"type": "save.result", "payload": {"ok": ok, "slot_id": slot_id}})
-            _send_saves_list(bundle, output)
+            blocked = _persist_blocked(bundle)
+            if blocked:
+                output.send({"type": "save.result",
+                             "payload": {"ok": False, "slot_id": slot_id, "reason": blocked}})
+            else:
+                ok = bundle.save_manager.save(
+                    slot_id, description=str(payload.get("description", ""))
+                )
+                output.send({"type": "save.result",
+                             "payload": {"ok": ok, "slot_id": slot_id,
+                                         "reason": None if ok else "写入存档失败"}})
+                _send_saves_list(bundle, output)
         elif mtype == "game.load":
             slot_id = int(payload.get("slot_id", 0))
-            ok = bundle.save_manager.load(slot_id)
-            output.send({"type": "load.result", "payload": {"ok": ok, "slot_id": slot_id}})
-            if ok:
-                bundle.api._push_status()
-                # 触发 on_load 系统事件：剧本可监听恢复剧情
-                loop.run_in_executor(executor, bundle.bus.emit, "on_load")
+            blocked = _persist_blocked(bundle)
+            if blocked:
+                output.send({"type": "load.result",
+                             "payload": {"ok": False, "slot_id": slot_id, "reason": blocked}})
+            else:
+                ok = bundle.save_manager.load(slot_id)
+                output.send({"type": "load.result",
+                             "payload": {"ok": ok, "slot_id": slot_id,
+                                         "reason": None if ok else "读取存档失败"}})
+                if ok:
+                    bundle.api._push_status()
+                    # 触发 on_load 系统事件：剧本可监听恢复剧情
+                    loop.run_in_executor(executor, bundle.bus.emit, "on_load")
         elif mtype == "game.quick_save":
-            ok = bundle.save_manager.quick_save()
-            output.send({"type": "save.result", "payload": {"ok": ok, "slot_id": 0, "quick": True}})
-            _send_saves_list(bundle, output)
+            blocked = _persist_blocked(bundle)
+            if blocked:
+                output.send({"type": "save.result",
+                             "payload": {"ok": False, "slot_id": 0, "quick": True, "reason": blocked}})
+            else:
+                ok = bundle.save_manager.quick_save()
+                output.send({"type": "save.result",
+                             "payload": {"ok": ok, "slot_id": 0, "quick": True,
+                                         "reason": None if ok else "写入存档失败"}})
+                _send_saves_list(bundle, output)
         elif mtype == "game.quick_load":
-            ok = bundle.save_manager.quick_load()
-            output.send({"type": "load.result", "payload": {"ok": ok, "slot_id": 0, "quick": True}})
-            if ok:
-                bundle.api._push_status()
+            blocked = _persist_blocked(bundle)
+            if blocked:
+                output.send({"type": "load.result",
+                             "payload": {"ok": False, "slot_id": 0, "quick": True, "reason": blocked}})
+            else:
+                ok = bundle.save_manager.quick_load()
+                output.send({"type": "load.result",
+                             "payload": {"ok": ok, "slot_id": 0, "quick": True,
+                                         "reason": None if ok else "读取存档失败"}})
+                if ok:
+                    bundle.api._push_status()
         elif mtype == "game.list_saves":
             _send_saves_list(bundle, output)
         elif mtype == "game.delete_save":
