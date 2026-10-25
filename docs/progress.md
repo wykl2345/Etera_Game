@@ -10,7 +10,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 
 ```
 ✅ Phase 1 后端引擎     ✅ Phase 2 最小前端     ✅ Phase 3 存档/状态栏     ✅ Phase 4 打磨/小游戏
-✅ 后端 125 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
+✅ 后端 130 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
 ```
 
 ## 二、完成度评估
@@ -21,10 +21,10 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 后端存档系统 | **94%** | 版本化 JSON（2.0.0）+ 迁移链（1.0→2.0）+ 原子写入 + 备份 + 20 槽 + 快速存档 + **对话快照**（读档还原文本/背景/立绘）；断线恢复未做（记录意图） |
 | WS 网关/协议 | **92%** | 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息、`game.emit_event`（前端主动触发剧本）、存读档一致性校验（对话中拒绝存读档）；无断线重连 |
 | 前端叙事界面 | **85%** | 文本流（逐字打印 + 段落点击推进 + 快进）、选项、立绘/背景占位、输入、小游戏触发 |
-| 前端系统界面 | **80%** | 主菜单（Web 现代化）、状态栏（HP/MP/体力条）、存档界面（槽位/删除/拖拽）、设置面板（localStorage） |
+| 前端系统界面 | **88%** | **Hub 行动枢纽**（角色卡片 + 剧本注册的行动按钮 + 数值条件锁定）、主菜单、状态栏、存档界面、设置面板（localStorage） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
-| 内容资产 | **18%** | 5 个 Lua 剧本：序章 / 咖啡店 / 蘑菇事件 / **早晨问候（每日）** / 演示 + DSL 自检；日常事件链已跑通（day 2 起每天早晨 + day≥3 蘑菇 + day≥5 咖啡店）；美术/音频素材全空（占位显示） |
-| 测试 | **93%** | 后端 125 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
+| 内容资产 | **22%** | 9 个 Lua 剧本（角色目录化：reimu/marisa 各有对话+早晨，灵梦另有特殊行动）：序章 / 咖啡店 / 蘑菇事件 / **早晨问候（每日）** / 演示 + DSL 自检；日常事件链已跑通（day 2 起每天早晨 + day≥3 蘑菇 + day≥5 咖啡店）；美术/音频素材全空（占位显示） |
+| 测试 | **95%** | 后端 130 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
 | 文档体系 | **90%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×6 / DSL 契约 |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~10%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补素材 / 加小游戏）。
@@ -79,6 +79,13 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | Python list 传给 Lua 是 userdata | `#ids` 报 "attempt to get length of a POBJECT value"，下标还是 0-based | 新 DSL 一律用 `runtime.table_from()` 返回真 Lua table；`data.list_characters()` 即此模式 |
 | 剧本无法声明事件优先级 | 早晨问候与随机事件同挂 `on_day_begin`，执行顺序只能靠文件名 | 剧本返回表支持 `priority = "high"`，loader 映射到 EventPriority |
 | 测试里重复 `loader.load_all()` | 每个剧本注册两次 → 早晨问候连弹两个选项 | env fixture 的 `init_engine` 已注册全部剧本，测试内不得重复 load；同时给 morning_call 加当天门控（`daily.last_morning_day`） |
+
+### 剧本 / Hub 类
+| 坑 | 现象 | 解决 |
+|---|---|---|
+| `_send_hub` 在 `game.start` 时立即推 | Hub 角色列表为空 —— `reset_game` 还在 executor 里异步跑，角色尚未载入 | 改由序章播完的 `add_done_callback`（`event.done`）统一推送；前端 `enterHub()` 也会主动 `game.hub` 拉取 |
+| 事件与对话混在一个剧本 | 早晨问候做成"每天必弹 + 强制选项"，玩家没有主动权 | 拆两类：自动事件（`on_day_begin`）vs 玩家主动对话（Hub 按钮 → `dialogue:<char>`） |
+| 多角色早晨事件重复打扰 | 每个角色都注册 `on_day_begin`，一天被叫醒多次 | 共用当天占坑旗标 `daily.morning_done = day`，第一个成功触发的角色占位，其余跳过 |
 
 ### 文档 / 流程类
 | 坑 | 现象 | 解决 |

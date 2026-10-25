@@ -24,6 +24,34 @@ priority 可选值：low / normal / high / critical（默认 normal）。
 同一事件有多个剧本时按优先级降序执行，同优先级保持注册（文件名）顺序。
 典型用途：早晨问候这类"每天开场"的剧本设 high，排在随机事件之前。
 
+--------------------------------------------------------------------------------
+一.5、Hub 按钮注册（可选）
+--------------------------------------------------------------------------------
+
+剧本可以声明一个 Hub（游戏主界面）入口按钮，玩家点它才触发本剧本：
+
+    return {
+        on_event = "dialogue:reimu",
+        hub = {
+            char = "reimu",            -- 归属角色 ID（显示在该角色卡片下）
+            label = "聊聊",             -- 按钮文案
+            order = 10,                -- 同角色内排序（小在前，默认 100）
+            require_relation = 10,     -- 可选：该角色好感 < N 时按钮锁定
+            require_flag = "story.intro_completed",  -- 可选："ns.key" 形式
+        },
+        execute = function() ... end
+    }
+
+未声明 hub 的剧本不会出现在 Hub 上（例如由 on_day_begin 自动触发的日常事件）。
+
+推荐组织方式：一个角色的多个剧本放在 Data/scenarios/characters/<角色ID>/ 下，
+每个文件一个行动/事件，方便单独修改和测试。
+
+    characters/reimu/
+      ├── dialogue.lua     on_event = "dialogue:reimu"       hub: 聊聊
+      ├── training.lua     on_event = "action:reimu_training" hub: 一起修行（需好感10）
+      └── morning.lua      on_event = "on_day_begin"         无 hub（自动触发）
+
 系统预定义事件名（参考 event_bus.py EventConstants）：
     on_game_start              游戏启动时
     on_game_end                游戏结束时

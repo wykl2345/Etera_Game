@@ -9,7 +9,7 @@ import { wsClient } from '../ws/client'
 /** 静态资源基地址（后端 main.py 的静态服务，默认 127.0.0.1:8766） */
 export const ASSET_BASE = 'http://127.0.0.1:8766'
 
-export type UiMode = 'main_menu' | 'game' | 'settings' | 'save' | 'load' | 'character_detail' | 'minigame'
+export type UiMode = 'main_menu' | 'hub' | 'game' | 'settings' | 'save' | 'load' | 'character_detail' | 'minigame'
 
 export interface TextLine {
   text: string
@@ -60,6 +60,24 @@ export interface CharacterView {
   position: string
 }
 
+/** Hub 角色卡片 */
+export interface HubCharacter {
+  char_id: string
+  name: string
+  relation: number
+  location: string
+}
+
+/** Hub 行动按钮（由剧本注册：char/label/event/order + 可用性） */
+export interface HubButton {
+  char: string
+  label: string
+  event: string
+  order: number
+  available: boolean
+  reason: string | null
+}
+
 export interface InputRequest {
   requestId: string
   prompt: string
@@ -92,6 +110,12 @@ interface GameState {
   autoAdvance: boolean
   /** 读档重放中：TextFlow 直接把快照全文显示，不走逐字打印 */
   restoring: boolean
+  /** Hub：角色卡片 */
+  hubCharacters: HubCharacter[]
+  /** Hub：剧本注册的行动按钮 */
+  hubButtons: HubButton[]
+  /** Hub：当前选中的角色（null = 未选） */
+  hubSelectedChar: string | null
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -116,6 +140,9 @@ export const useGameStore = defineStore('game', {
     textAdvanceTick: 0,
     autoAdvance: false,
     restoring: false,
+    hubCharacters: [],
+    hubButtons: [],
+    hubSelectedChar: null,
   }),
 
   getters: {
@@ -126,6 +153,14 @@ export const useGameStore = defineStore('game', {
      * 中途存档会存出"数据在前、画面在半截"的不一致档。所以要求
      * 无选项/输入/小游戏等待，且文本已播完（textIdle）才能存读档。
      */
+    /** Hub 中当前选中角色的行动按钮（按 order 排序） */
+    hubCharButtons(state): HubButton[] {
+      if (!state.hubSelectedChar) return []
+      return state.hubButtons
+        .filter((b) => b.char === state.hubSelectedChar)
+        .sort((a, b) => a.order - b.order)
+    },
+
     canPersist(state): boolean {
       return state.choice === null
         && state.input === null
@@ -231,6 +266,28 @@ export const useGameStore = defineStore('game', {
         const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; event?: string }
         if (!p.ok) this.showToast(p.reason ?? '触发失败')
       })
+      // Hub 数据：角色卡片 + 剧本注册的行动按钮
+      wsClient.on('hub.buttons', (m) => {
+        const p = (m.payload ?? {}) as {
+          characters?: HubCharacter[]
+          buttons?: HubButton[]
+        }
+        this.hubCharacters = p.characters ?? []
+        this.hubButtons = p.buttons ?? []
+        // 选中角色若已不在列表里则清空
+        if (this.hubSelectedChar
+            && !this.hubCharacters.some((c) => c.char_id === this.hubSelectedChar)) {
+          this.hubSelectedChar = null
+        }
+      })
+
+      // 剧本（含阻塞交互）播完 → 回 Hub；Hub 按钮可用性由随后的 hub.buttons 刷新
+      wsClient.on('event.done', () => {
+        if (this.uiMode === 'game' || this.uiMode === 'hub') {
+          this.enterHub()
+        }
+      })
+
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
       wsClient.on('minigame.start', (m) => {
         const p = (m.payload ?? {}) as { game_id?: string }
@@ -343,6 +400,31 @@ export const useGameStore = defineStore('game', {
 
     closeMenu(): void {
       this.popMode()
+    },
+
+    /** 进入 Hub（行动枢纽）：清空叙事区、拉取按钮列表 */
+    enterHub(): void {
+      this.choice = null
+      this.input = null
+      this.activeMinigame = null
+      this.uiMode = 'hub'
+      wsClient.send({ type: 'game.hub' })
+    },
+
+    /** 选中/取消选中某个角色（Hub 角色卡片） */
+    selectHubChar(charId: string): void {
+      this.hubSelectedChar = this.hubSelectedChar === charId ? null : charId
+    },
+
+    /** 点 Hub 上的角色行动按钮 → 播对应剧本 */
+    chooseHubButton(btn: HubButton): void {
+      if (!btn.available) {
+        this.showToast(btn.reason ?? '该行动当前不可用')
+        return
+      }
+      this.autoAdvance = true      // 事件内对话连续播放，不用一段一点
+      this.uiMode = 'game'
+      wsClient.send({ type: 'game.emit_event', payload: { event: btn.event } })
     },
 
     /** 工具条「下一天」：推进一天，触发 on_day_end → on_day_begin 日常事件 */

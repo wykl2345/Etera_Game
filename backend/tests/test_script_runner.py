@@ -363,6 +363,45 @@ class TestApiBridge:
 
 
 # ══════════════════ 端到端：剧本加载 + 完整流程 ══════════════════
+class TestHubButtons:
+    """角色剧本声明 hub 按钮 → loader 收集。"""
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_loader_collects_hub_buttons(self):
+        from engine.loader import ScenarioLoader
+
+        bus = EventBus()
+        loader = ScenarioLoader(LuaSandbox(), bus, SCRIPTS_DIR)
+        loader.load_all()
+
+        pairs = {(b.char, b.label) for b in loader.hub_buttons}
+        assert ("reimu", "聊聊") in pairs
+        assert ("reimu", "一起修行") in pairs
+        assert ("marisa", "聊聊") in pairs
+
+        training = [b for b in loader.hub_buttons if b.label == "一起修行"][0]
+        assert training.event == "action:reimu_training"
+        assert training.require_relation == 10
+        assert training.order == 20
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_character_dialogue_event(self, env):
+        """Hub 按钮落点：dialogue:reimu 触发灵梦的对话剧本。"""
+        bus, output = env["bus"], env["output"]
+        sched = env["scheduler"]
+
+        t = threading.Thread(target=lambda: bus.emit("dialogue:reimu"), daemon=True)
+        t.start()
+
+        m = _wait_choice(output, "随便聊聊", timeout=5)
+        assert m is not None, "角色对话剧本未触发"
+        assert m["payload"]["options"] == ["随便聊聊", "帮忙做事", "告辞"]
+
+        sched.resolve_wait(m["requestId"], choice_index=2)
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+
 class TestEndToEnd:
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_loader_registers_all_three(self, env):
@@ -500,48 +539,58 @@ class TestEndToEnd:
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_morning_call_daily_event(self, env):
-        """早晨问候：每天触发、随机挑角色、回应影响好感、时段重置为 morning。"""
+        """早晨问候：每个角色各有剧本，day≥2 随机触发，当天最多一次。
+
+        两个角色剧本各 50% 概率，所以单天可能都不触发 —— 循环多天直到触发。
+        """
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
         sched = env["scheduler"]
 
-        ctx.set_day(3)
-        ctx.set_time_of_day("night")           # 前一天晚上
         ctx.set_global_flag("mushroom_test", "triggered", True)
         ctx.set_global_flag("demo", "minigame_done", True)
 
-        before = {cid: ctx.get_character_relation(cid) for cid in ("reimu", "marisa")}
+        handled = set()
+        fired_opts = None
+        fired_day = None
 
-        t = threading.Thread(target=lambda: bus.emit("on_day_begin"), daemon=True)
-        t.start()
+        for day in range(2, 16):                     # 概率上 15 天内几乎必然触发
+            ctx.set_day(day)
+            t = threading.Thread(target=lambda: bus.emit("on_day_begin"), daemon=True)
+            t.start()
+            deadline = time.time() + 3
+            while time.time() < deadline and t.is_alive():
+                for m in output.messages:
+                    if m["type"] == "ui.ask_choice" and m["requestId"] not in handled:
+                        handled.add(m["requestId"])
+                        if fired_opts is None and m["payload"]["options"][0] == "起来了":
+                            fired_opts = m["payload"]["options"]
+                            fired_day = day
+                        sched.resolve_wait(m["requestId"], choice_index=1)
+                time.sleep(0.05)
+            t.join(timeout=3)
 
-        morning = _wait_choice(output, "起来了")
-        assert morning is not None, "早晨问候未触发"
-        assert morning["payload"]["options"] == ["起来了", "再睡五分钟", "装作没听见"]
+            if fired_opts is not None:
+                # 当天只播一次：同一天再 emit 不应再弹早晨选项
+                before = len([x for x in output.messages if x["type"] == "ui.ask_choice"])
+                bus.emit("on_day_begin")
+                after = len([x for x in output.messages if x["type"] == "ui.ask_choice"])
+                assert after == before, "同一天不应重复叫醒"
+                break
 
-        sched.resolve_wait(morning["requestId"], choice_index=1)
-        t.join(timeout=5)
-        assert not t.is_alive()
-
-        # 时段被重置为早晨
-        assert ctx.get_time_of_day().value == "morning"
-        # 随机角色 +2：只有一个角色变化，且增量总和为 2
-        after = {cid: ctx.get_character_relation(cid) for cid in before}
-        deltas = [after[cid] - before[cid] for cid in before]
-        assert sum(deltas) == 2, f"应只有一个角色 +2，实际 {deltas}"
-        assert max(deltas) == 2
+        assert fired_opts is not None, "15 天内早晨问候一次都没触发"
+        assert fired_opts == ["起来了", "再睡五分钟", "装作没听见"]
+        assert fired_day >= 2
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
-    def test_morning_call_only_once_per_day(self, env):
-        """同一天重复 emit on_day_begin，早晨问候不重复打扰。"""
+    def test_morning_event_skipped_when_already_done(self, env):
+        """当天已有人叫醒（daily.morning_done = day）时，早晨剧本直接跳过。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
-        sched = env["scheduler"]
 
         ctx.set_day(4)
+        ctx.set_global_flag("daily", "morning_done", 4)
         ctx.set_global_flag("mushroom_test", "triggered", True)
         ctx.set_global_flag("demo", "minigame_done", True)
 
-        # 先把当天标记为已播，再触发 → 不应有 ask_choice
-        ctx.set_global_flag("daily", "last_morning_day", 4)
         bus.emit("on_day_begin")
         assert [m for m in output.messages if m["type"] == "ui.ask_choice"] == []
 
@@ -557,8 +606,8 @@ class TestEndToEnd:
         ctx.set_day(5)
         ctx.set_character_relation("reimu", 25)
         ctx.set_player_stat("money", 100)
-        # 隔离干扰：早晨问候按天门控、蘑菇事件随机、小游戏会阻塞
-        ctx.set_global_flag("daily", "last_morning_day", 5)
+        # 隔离干扰：早晨问候用当天占坑旗标跳过、蘑菇事件随机、小游戏会阻塞
+        ctx.set_global_flag("daily", "morning_done", 5)
         ctx.set_global_flag("mushroom_test", "triggered", True)
         ctx.set_global_flag("demo", "minigame_done", True)
 

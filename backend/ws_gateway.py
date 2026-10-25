@@ -85,6 +85,41 @@ async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
             return
 
 
+def _hub_payload(bundle: Any) -> Dict[str, Any]:
+    """组装 Hub 数据：角色卡片 + 每个角色注册的行动按钮（带可用性判定）。"""
+    buttons = getattr(bundle, "hub_buttons", None) or []
+    chars = [
+        {"char_id": cid, "name": ch.name,
+         "relation": ch.relation, "location": ch.location}
+        for cid, ch in bundle.ctx.get_all_characters().items()
+    ]
+
+    items = []
+    for btn in buttons:
+        available, reason = True, None
+        if btn.require_relation is not None:
+            if bundle.ctx.get_character_relation(btn.char) < btn.require_relation:
+                available = False
+                reason = f"需要好感 {btn.require_relation}"
+        if btn.require_flag:
+            ns, _, key = str(btn.require_flag).partition(".")
+            if not bundle.ctx.get_global_flag(ns, key, False):
+                available = False
+                reason = reason or "尚未解锁"
+        d = btn.to_dict()
+        d["available"] = available
+        d["reason"] = reason
+        items.append(d)
+
+    items.sort(key=lambda b: (b["char"], b["order"]))
+    chars.sort(key=lambda c: c["char_id"])
+    return {"characters": chars, "buttons": items}
+
+
+def _send_hub(bundle: Any, output: UIOutput) -> None:
+    output.send({"type": "hub.buttons", "payload": _hub_payload(bundle)})
+
+
 def _send_saves_list(bundle: Any, output: UIOutput) -> None:
     """推送存档槽位列表（saves.list）。"""
     slots = []
@@ -163,6 +198,16 @@ async def handle_connection(
                 bundle.bus.emit("on_game_start")
 
             active_game = loop.run_in_executor(executor, start_new)
+
+            def _on_intro_done(_fut: Any) -> None:
+                # 序章（on_game_start）播完 → 通知前端回 Hub
+                output.send({"type": "event.done", "payload": {"event": "on_game_start"}})
+                _send_hub(bundle, output)
+
+            if active_game is not None:
+                active_game.add_done_callback(_on_intro_done)
+            # 注意：此处不推 hub —— reset_game 还在 executor 里跑，角色尚未载入，
+            # 现在推会得到空角色列表。由 _on_intro_done（序章播完）统一推送。
         elif mtype == "game.abort":
             # 返回主菜单：中止挂起脚本，释放单 worker executor（否则下次 game.start 排队卡死）
             bundle.scheduler.stop_all()
@@ -177,12 +222,17 @@ async def handle_connection(
                 def advance() -> None:
                     recorder.begin()
                     bundle.ctx.set_day(bundle.ctx.get_day() + 1)
+                    # 新的一天从早晨开始（时间系统框架规则，不交给剧本）
+                    bundle.ctx.set_time_of_day("morning")
                     bundle.api._push_status()
                     # 回执先发：日常剧本可能阻塞在 ask_choice，不能等它跑完
                     output.send({"type": "day.result",
                                  "payload": {"ok": True, "day": bundle.ctx.get_day()}})
                     bundle.bus.emit("on_day_end")
                     bundle.bus.emit("on_day_begin")
+                    # 日常事件全部结束 → 通知前端回 Hub 并刷新
+                    output.send({"type": "event.done", "payload": {"event": "day_advance"}})
+                    _send_hub(bundle, output)
 
                 loop.run_in_executor(executor, advance)
         elif mtype == "game.emit_event":
@@ -198,7 +248,17 @@ async def handle_connection(
                              "payload": {"ok": False, "event": event_name, "reason": blocked}})
             else:
                 recorder.begin()
-                loop.run_in_executor(executor, bundle.bus.emit, event_name)
+
+                def run_event() -> None:
+                    try:
+                        bundle.bus.emit(event_name)
+                    finally:
+                        # 剧本（含阻塞交互）结束 → 通知前端回 Hub 并刷新按钮可用性
+                        output.send({"type": "event.done",
+                                     "payload": {"event": event_name}})
+                        _send_hub(bundle, output)
+
+                loop.run_in_executor(executor, run_event)
                 output.send({"type": "event.result",
                              "payload": {"ok": True, "event": event_name}})
         elif mtype == "game.save":
@@ -256,6 +316,9 @@ async def handle_connection(
                                          "dialogue": bundle.save_manager._last_dialogue}})
                 if ok:
                     bundle.api._push_status()
+        elif mtype == "game.hub":
+            # 前端进入 Hub 时拉取：角色卡片 + 行动按钮 + 可用性
+            _send_hub(bundle, output)
         elif mtype == "game.list_saves":
             _send_saves_list(bundle, output)
         elif mtype == "game.delete_save":

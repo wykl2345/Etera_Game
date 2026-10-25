@@ -154,6 +154,59 @@ def test_abort_frees_game_thread():
     asyncio.run(_run())
 
 
+class TestHubPayload:
+    """Hub 数据组装：角色卡片 + 按钮条件可用性。"""
+
+    def _bundle(self, tmp_path):
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        return init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+        )
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_payload_marks_locked_button(self, tmp_path):
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_character_relation("reimu", 0)      # < 门槛 10
+        payload = _hub_payload(b)
+
+        chars = {c["char_id"] for c in payload["characters"]}
+        assert {"reimu", "marisa"} <= chars
+
+        training = [x for x in payload["buttons"] if x["label"] == "一起修行"][0]
+        assert training["available"] is False
+        assert "好感" in (training["reason"] or "")
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_payload_unlocks_when_relation_enough(self, tmp_path):
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_character_relation("reimu", 20)     # ≥ 门槛 10
+        payload = _hub_payload(b)
+        training = [x for x in payload["buttons"] if x["label"] == "一起修行"][0]
+        assert training["available"] is True
+        assert training["reason"] is None
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_payload_buttons_have_event_and_order(self, tmp_path):
+        from ws_gateway import _hub_payload
+
+        payload = _hub_payload(self._bundle(tmp_path))
+        for btn in payload["buttons"]:
+            assert btn["event"], "每个按钮都要有可触发的事件"
+            assert isinstance(btn["order"], int)
+            assert btn["char"] in {c["char_id"] for c in payload["characters"]}
+
+
 class TestDialogueRecorder:
     """DialogueRecorder：只记录画面类消息，控制类不进快照；begin() 清空。"""
 

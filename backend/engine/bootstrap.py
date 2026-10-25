@@ -31,6 +31,7 @@ class EngineBundle:
     output: UIOutput
     character_model: CharacterModel
     save_manager: Any = None
+    hub_buttons: Any = None
 
 
 def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
@@ -87,4 +88,5 @@ def init_engine(
         bus=bus, ctx=ctx, sandbox=sandbox,
         scheduler=scheduler, api=api, output=output,
         character_model=cm, save_manager=save_manager,
+        hub_buttons=loader.hub_buttons,
     )

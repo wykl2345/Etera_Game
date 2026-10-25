@@ -6,8 +6,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from engine.event_bus import EventPriority
 from engine.sandbox import ScriptValidator
@@ -15,11 +16,47 @@ from engine.sandbox import ScriptValidator
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class HubButton:
+    """剧本在 Hub（行动枢纽）上注册的入口按钮。
+
+    剧本返回表声明：
+        hub = {
+            char = "reimu",                      -- 归属角色（决定显示在哪张角色卡下）
+            label = "聊聊",                       -- 按钮文案
+            order = 10,                          -- 排序（小在前，默认 100）
+            require_flag = "story.intro_completed",  -- 可选：需要某 flag（"ns.key"）
+            require_relation = 10,               -- 可选：需要该角色好感 ≥ N
+        }
+    event 由剧本的 on_event 决定（点按钮即 emit 该事件）。
+    """
+
+    char: str
+    label: str
+    event: str
+    order: int = 100
+    source: str = ""
+    require_flag: Optional[str] = None
+    require_relation: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "char": self.char,
+            "label": self.label,
+            "event": self.event,
+            "order": self.order,
+            "require_flag": self.require_flag,
+            "require_relation": self.require_relation,
+        }
+
+
 class ScenarioLoader:
     def __init__(self, sandbox: Any, event_bus: Any, scripts_dir: Path) -> None:
         self._sandbox = sandbox
         self._bus = event_bus
         self.scripts_dir = Path(scripts_dir)
+        # 剧本注册的 Hub 按钮（按 order 排序后供前端使用）
+        self.hub_buttons: List[HubButton] = []
 
     def load_all(self) -> List[str]:
         """扫描并注册全部剧本，返回成功注册的相对路径列表。"""
@@ -62,6 +99,11 @@ class ScenarioLoader:
                 continue
             priority = self._read_priority(result, rel)
             self._bus.subscribe(str(on_event), execute_fn, priority=priority)
+
+            hub = self._read_hub(result, str(on_event), rel)
+            if hub is not None:
+                self.hub_buttons.append(hub)
+                logger.info("  Hub 按钮: [%s] %s → %s", hub.char, hub.label, hub.event)
             loaded.append(rel)
             logger.info("[✓] 已注册剧本: %s → %s", rel, on_event)
         return loaded
@@ -91,6 +133,57 @@ class ScenarioLoader:
             logger.warning("剧本 priority 非法（%s）: %s，按 normal 处理", name, rel)
             return EventPriority.NORMAL
         return mapping[name]
+
+    @staticmethod
+    def _hub_get(hub: Any, key: str, default: Any = None) -> Any:
+        """从 Lua table / dict 读字段（lupa 两种访问都支持，按需回退）。"""
+        try:
+            value = hub[key]
+            if value is not None:
+                return value
+        except (KeyError, TypeError, IndexError):
+            pass
+        return getattr(hub, key, default)
+
+    def _read_hub(self, result: Any, on_event: str, rel: str) -> Optional[HubButton]:
+        """读取剧本可选的 hub 字段；未声明则返回 None。"""
+        try:
+            hub = result["hub"]
+        except (KeyError, TypeError):
+            hub = getattr(result, "hub", None)
+        if not hub:
+            return None
+
+        char = self._hub_get(hub, "char")
+        label = self._hub_get(hub, "label")
+        if not char or not label:
+            logger.warning("剧本 hub 声明缺少 char/label: %s", rel)
+            return None
+
+        order = self._hub_get(hub, "order", 100)
+        try:
+            order = int(order)
+        except (TypeError, ValueError):
+            order = 100
+
+        require_flag = self._hub_get(hub, "require_flag")
+        require_relation = self._hub_get(hub, "require_relation")
+        try:
+            require_relation = (
+                int(require_relation) if require_relation is not None else None
+            )
+        except (TypeError, ValueError):
+            require_relation = None
+
+        return HubButton(
+            char=str(char),
+            label=str(label),
+            event=on_event,
+            order=order,
+            source=rel,
+            require_flag=str(require_flag) if require_flag else None,
+            require_relation=require_relation,
+        )
 
     def list_scripts(self) -> List[str]:
         if not self.scripts_dir.exists():
