@@ -14,6 +14,10 @@ const selectedName = computed(
   () => hubCharacters.value.find((c) => c.char_id === hubSelectedChar.value)?.name ?? '',
 )
 
+/** 移动目标分组：同区域 / 跨区域 */
+const sameRegion = computed(() => (hubScene.value?.adjacent ?? []).filter((s) => s.same_region))
+const otherRegion = computed(() => (hubScene.value?.adjacent ?? []).filter((s) => !s.same_region))
+
 /** 按钮上的消耗标注：⚡20 / 1/3 */
 function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: number | null }): string {
   const parts: string[] = []
@@ -30,7 +34,10 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
     <div class="hub-body">
       <!-- 当前场景 -->
       <header class="hub-head">
-        <h2>{{ hubScene?.name ?? '未知地点' }}</h2>
+        <h2>
+          {{ hubScene?.name ?? '未知地点' }}
+          <span v-if="hubScene?.region_name" class="region">{{ hubScene.region_name }}</span>
+        </h2>
         <p v-if="hubScene?.desc" class="hint">{{ hubScene.desc }}</p>
       </header>
 
@@ -65,6 +72,8 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
             <span v-if="costLabel(b)" class="cost">{{ costLabel(b) }}</span>
             <span v-if="!b.available" class="lock">锁</span>
           </button>
+          <!-- 引擎通用行动：送礼（不属于剧本按钮） -->
+          <button class="action-btn" @click="store.openGift(hubSelectedChar!)">送礼</button>
           <p v-if="!hubCharButtons.length" class="empty">（该角色暂无可用行动）</p>
         </div>
       </section>
@@ -81,22 +90,45 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
           :title="hubScene?.can_sleep ? '睡一觉：恢复体力并进入下一天' : '这里睡不着（需要在有床的地方）'"
           @click="store.doSleep()"
         >睡觉</button>
+        <button
+          v-if="hubScene?.shop"
+          class="hero-btn"
+          :title="hubScene.shop.name"
+          @click="store.openShop()"
+        >购物</button>
         <button class="hero-btn" @click="store.openCharacters()">信息确认</button>
       </section>
 
-      <!-- 移动面板 -->
+      <!-- 移动面板：区域内 / 跨区域 分组 -->
       <section v-if="moveOpen" class="move-panel">
-        <div class="actions-title">可前往</div>
-        <div class="actions-row">
-          <button
-            v-for="s in (hubScene?.adjacent ?? [])"
-            :key="s.id"
-            class="action-btn"
-            :title="s.desc"
-            @click="store.moveTo(s.id)"
-          >{{ s.name }}</button>
-          <p v-if="!hubScene?.adjacent?.length" class="empty">（无处可去）</p>
-        </div>
+        <template v-if="sameRegion.length">
+          <div class="actions-title">本区域内（{{ hubScene?.region_name }}）</div>
+          <div class="actions-row">
+            <button
+              v-for="s in sameRegion"
+              :key="s.id"
+              class="action-btn"
+              :title="s.desc"
+              @click="store.moveTo(s.id)"
+            >{{ s.name }}</button>
+          </div>
+        </template>
+        <template v-if="otherRegion.length">
+          <div class="actions-title" style="margin-top: 14px">前往其他区域</div>
+          <div class="actions-row">
+            <button
+              v-for="s in otherRegion"
+              :key="s.id"
+              class="action-btn"
+              :title="s.desc"
+              @click="store.moveTo(s.id)"
+            >
+              {{ s.name }}
+              <span class="cost">{{ s.region_name }}</span>
+            </button>
+          </div>
+        </template>
+        <p v-if="!sameRegion.length && !otherRegion.length" class="empty">（无处可去）</p>
       </section>
 
       <!-- 游戏功能按钮 -->
@@ -148,6 +180,16 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
   line-height: 1.7;
   color: var(--fg-dim);
   letter-spacing: 0.04em;
+}
+.region {
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #1d232c;
+  font-weight: 400;
 }
 
 .chars {

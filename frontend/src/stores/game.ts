@@ -84,13 +84,46 @@ export interface HubButton {
   used_today: number | null
 }
 
-/** 场景（Hub 当前地点） */
-export interface HubScene {
+/** 可达地点（移动目标） */
+export interface SceneLink {
   id: string
   name: string
   desc: string
   can_sleep: boolean
-  adjacent: { id: string; name: string; desc: string; can_sleep: boolean }[]
+  /** true = 同区域内；false = 需要跨区域 */
+  same_region: boolean
+  region_name: string
+}
+
+/** 场景（Hub 当前地点，两级：区域 → 地点） */
+export interface HubScene {
+  id: string
+  name: string
+  region_name: string
+  desc: string
+  can_sleep: boolean
+  /** 本地点的商店（没有则为 null） */
+  shop: { id: string; name: string } | null
+  adjacent: SceneLink[]
+}
+
+/** 背包物品 */
+export interface InventoryItem {
+  id: string
+  name: string
+  count: number
+  gift_value: number
+  desc: string
+}
+
+/** 商店商品 */
+export interface ShopGood {
+  id: string
+  name: string
+  price: number
+  gift_value: number
+  desc: string
+  affordable: boolean
 }
 
 /** 角色一览/详情数据（后端 characters.list） */
@@ -160,7 +193,7 @@ interface GameState {
    * 用 uiMode 切换会把整个页面替换掉（SaveScreen 渲染在 GameScreen 内），
    * 离开叙事页后就只剩空壳 —— 表现为"点保存后跳到一个只有 —— 的页面"。
    */
-  panel: 'save' | 'load' | 'settings' | 'characters' | null
+  panel: 'save' | 'load' | 'settings' | 'characters' | 'shop' | 'gift' | null
   /** 角色一览数据 */
   charactersList: CharacterInfo[]
   /** 角色一览排序方式 */
@@ -169,6 +202,14 @@ interface GameState {
   detailChar: string | null
   /** Hub 当前场景 */
   hubScene: HubScene | null
+  /** 当前商店信息（null = 没有商店） */
+  shopInfo: { id: string; name: string } | null
+  /** 商店商品 */
+  shopGoods: ShopGood[]
+  /** 送礼目标角色（null = 未打开送礼面板） */
+  giftChar: string | null
+  /** 背包（送礼面板用） */
+  inventory: InventoryItem[]
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -202,6 +243,10 @@ export const useGameStore = defineStore('game', {
     charSort: 'relation',
     detailChar: null,
     hubScene: null,
+    shopInfo: null,
+    shopGoods: [],
+    giftChar: null,
+    inventory: [],
   }),
 
   getters: {
@@ -369,6 +414,56 @@ export const useGameStore = defineStore('game', {
           this.showToast(p.reason ?? '读档失败')
         }
       })
+      // 背包
+      wsClient.on('inventory.data', (m) => {
+        const p = (m.payload ?? {}) as { items?: InventoryItem[] }
+        this.inventory = p.items ?? []
+      })
+
+      // 商店商品
+      wsClient.on('shop.data', (m) => {
+        const p = (m.payload ?? {}) as {
+          ok?: boolean
+          reason?: string
+          shop?: { id: string; name: string }
+          goods?: ShopGood[]
+        }
+        if (!p.ok) {
+          this.showToast(p.reason ?? '这里没有商店')
+          this.panel = null
+          return
+        }
+        this.shopInfo = p.shop ?? null
+        this.shopGoods = p.goods ?? []
+      })
+
+      // 购买结果
+      wsClient.on('buy.result', (m) => {
+        const p = (m.payload ?? {}) as {
+          ok?: boolean; item?: string; count?: number; cost?: number; reason?: string
+        }
+        if (p.ok) {
+          this.showToast(`买了 ${p.item} ×${p.count}（-${p.cost} 文）`)
+          wsClient.send({ type: 'game.shop' })   // 刷新价格可买状态
+        } else {
+          this.showToast(p.reason ?? '购买失败')
+        }
+      })
+
+      // 送礼结果
+      wsClient.on('gift.result', (m) => {
+        const p = (m.payload ?? {}) as {
+          ok?: boolean; item?: string; gain?: number; relation?: number; reason?: string
+        }
+        if (p.ok) {
+          this.showToast(`送出 ${p.item}，好感 +${p.gain}（现在 ${p.relation}）`)
+          this.panel = null
+          this.giftChar = null
+        } else {
+          this.showToast(p.reason ?? '送礼失败')
+        }
+      })
+
       // 移动结果
       wsClient.on('move.result', (m) => {
         const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; name?: string }
@@ -572,6 +667,38 @@ export const useGameStore = defineStore('game', {
     closeMenu(): void {
       // 关悬浮面板，回到原界面（uiMode 从未改变）
       this.panel = null
+    },
+
+    /** 打开当前地点的商店 */
+    openShop(): void {
+      this.panel = 'shop'
+      wsClient.send({ type: 'game.shop' })
+    },
+
+    /** 购买商品 */
+    buyItem(itemId: string): void {
+      wsClient.send({ type: 'game.buy', payload: { item: itemId, count: 1 } })
+    },
+
+    /** 打开送礼面板（对指定角色）：先进浮窗，背包由 GiftModal 拉取 */
+    openGift(charId: string): void {
+      this.giftChar = charId
+      this.panel = 'gift'
+      this.refreshInventory()
+    },
+
+    /** 刷新背包 */
+    refreshInventory(): void {
+      wsClient.send({ type: 'game.inventory' })
+    },
+
+    /** 送出物品 */
+    sendGift(itemId: string): void {
+      if (!this.giftChar) return
+      wsClient.send({
+        type: 'game.gift',
+        payload: { char: this.giftChar, item: itemId },
+      })
     },
 
     /** 移动到相邻场景 */

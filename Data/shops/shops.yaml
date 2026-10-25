@@ -1,0 +1,19 @@
+# 商店定义 —— 不同地点卖不同东西（扩展新商店只需在这里加一段）
+#
+# 每个商店：
+#   name    商店显示名
+#   items   商品列表（物品 ID，见 Data/items/items.yaml）
+#   markup  可选：价格倍率（1.0 = 基准价，1.2 = 贵两成）
+
+shops:
+  village_market:
+    name: 人间之里的市集
+    items:
+      - 煎茶
+      - 团子
+
+  # 预留：以后可以在神社或魔法森林加商店，例如
+  # shrine_shop:
+  #   name: 神社的小摊
+  #   items: [御守]
+  #   markup: 1.0

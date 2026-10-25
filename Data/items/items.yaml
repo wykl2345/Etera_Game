@@ -1,0 +1,32 @@
+# 物品定义 —— 商店售卖、送礼共用
+#
+# 每个物品：
+#   name        显示名
+#   price       基准售价（商店可在自己的配置里覆盖）
+#   gift_value  送给角色时增加的好感
+#   desc        描述
+
+items:
+  煎茶:
+    name: 煎茶
+    price: 30
+    gift_value: 5
+    desc: 温热的绿茶，灵梦喜欢的味道。
+
+  团子:
+    name: 团子
+    price: 50
+    gift_value: 8
+    desc: 三色团子，甜度刚好。
+
+  发光蘑菇:
+    name: 发光蘑菇
+    price: 80
+    gift_value: 6
+    desc: 魔法森林特产，在暗处会泛出微光。
+
+  御守:
+    name: 御守
+    price: 120
+    gift_value: 12
+    desc: 博丽神社的护身符，据说能避邪。

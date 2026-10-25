@@ -328,15 +328,42 @@ class TestHubPayload:
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_scene_info_has_neighbors_and_sleep(self, tmp_path):
-        """Hub 返回当前场景的名称/描述/相邻地点/能否睡觉。"""
+        """Hub 返回场景信息；可达地点按「同区域 / 跨区域」区分。"""
         from ws_gateway import _hub_payload
 
         b = self._bundle(tmp_path)
         b.ctx.set_location("home")
         scene = _hub_payload(b)["scene"]
         assert scene["name"] == "自宅"
+        assert scene["region_name"] == "人间之里"
         assert scene["can_sleep"] is True
-        assert {s["id"] for s in scene["adjacent"]} >= {"hakurei_shrine", "village"}
+
+        ids = {s["id"] for s in scene["adjacent"]}
+        # 同区域：市集；相邻区域：神社 / 魔法森林
+        assert ids == {"market", "hakurei_shrine", "magic_forest"}, ids
+
+        same = {s["id"] for s in scene["adjacent"] if s["same_region"]}
+        assert same == {"market"}, "只有市集属于同一区域"
+
+        other = {s["id"] for s in scene["adjacent"] if not s["same_region"]}
+        assert other == {"hakurei_shrine", "magic_forest"}
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_shop_only_in_scene_with_shop(self, tmp_path):
+        """只有配置了 shop 的地点才暴露商店。"""
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+
+        b.ctx.set_location("home")
+        assert _hub_payload(b)["scene"]["shop"] is None, "自宅没有商店"
+
+        b.ctx.set_location("market")
+        shop = _hub_payload(b)["scene"]["shop"]
+        assert shop is not None
+        assert shop["id"] == "village_market"
+        assert shop["name"] == "人间之里的市集"
+
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_payload_buttons_have_event_and_order(self, tmp_path):
@@ -347,6 +374,29 @@ class TestHubPayload:
             assert btn["event"], "每个按钮都要有可触发的事件"
             assert isinstance(btn["order"], int)
             assert btn["char"] in {c["char_id"] for c in payload["characters"]}
+
+
+class TestCatalog:
+    """物品/商店目录：价格换算、送礼好感。"""
+
+    def test_items_and_shop_loaded(self, tmp_path):
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+        )
+        assert b.catalog.item("煎茶") is not None
+        assert b.catalog.gift_value("煎茶") == 5
+        goods = b.catalog.shop_goods("village_market")
+        ids = {g["id"] for g in goods}
+        assert {"煎茶", "团子"} <= ids
+        assert all(g["price"] > 0 for g in goods)
 
 
 class TestDialogueRecorder:

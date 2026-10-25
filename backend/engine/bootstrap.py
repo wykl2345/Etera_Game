@@ -15,6 +15,7 @@ from engine.character_model import CharacterModel
 from engine.event_bus import EventBus
 from engine.game_context import GameContext, StatBlock
 from engine.loader import ScenarioLoader
+from engine.catalog import Catalog
 from engine.scenes import SceneRegistry
 from engine.sandbox import LuaSandbox
 from engine.script_runner import ScriptScheduler, UIOutput
@@ -34,6 +35,7 @@ class EngineBundle:
     save_manager: Any = None
     hub_buttons: Any = None
     scenes: Any = None
+    catalog: Any = None
 
 
 def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
@@ -100,4 +102,8 @@ def init_engine(
         character_model=cm, save_manager=save_manager,
         hub_buttons=loader.hub_buttons,
         scenes=SceneRegistry(Path(scenes_config)),
+        catalog=Catalog(
+            Path(characters_dir).parent / "items" / "items.yaml",
+            Path(characters_dir).parent / "shops" / "shops.yaml",
+        ),
     )

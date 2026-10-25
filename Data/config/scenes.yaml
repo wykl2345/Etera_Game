@@ -1,29 +1,52 @@
-# 场景定义 —— 主角移动与世界地点
+# 场景定义 —— 两级结构：区域（region）→ 地点（scene）
 #
-# 每个场景可声明：
-#   name      显示名
-#   adjacent  可直接移动过去的相邻场景（双向不必重复写，引擎双向处理）
-#   sleep     是否可在此睡觉（睡觉 = 恢复体力 + 推进一天）
-#   desc      场景描述（可选）
+# 移动规则：
+#   ① 同一区域内任意地点可互相移动（自宅 ⇄ 市集）
+#   ② 只有区域相邻时才能跨区（人间之里 → 博丽神社 / 魔法森林）
+#
+# regions:
+#   name      区域显示名
+#   adjacent  相邻区域（引擎自动补双向）
+#
+# scenes:
+#   name      地点显示名
+#   region    所属区域
+#   desc      地点描述
+#   sleep     可在此睡觉（恢复体力 + 推进一天）
+#   shop      该地点的商店 ID（见 Data/shops/）
+
+regions:
+  human_village:
+    name: 人间之里
+    adjacent: [shrine, forest]
+
+  shrine:
+    name: 博丽神社
+    adjacent: [human_village, forest]
+
+  forest:
+    name: 魔法森林
+    adjacent: [human_village, shrine]
 
 scenes:
   home:
     name: 自宅
+    region: human_village
     desc: 你在人间之里的小屋，陈设简单但还算舒适。
-    adjacent: [hakurei_shrine, village]
     sleep: true
+
+  market:
+    name: 市集
+    region: human_village
+    desc: 人声鼎沸的市集，什么都买得到。
+    shop: village_market
 
   hakurei_shrine:
     name: 博丽神社
+    region: shrine
     desc: 山顶上的神社，香火冷清，但风景极好。
-    adjacent: [home, magic_forest]
 
   magic_forest:
     name: 魔法森林
+    region: forest
     desc: 雾气弥漫的森林，到处是奇怪的蘑菇。
-    adjacent: [hakurei_shrine, village]
-
-  village:
-    name: 人间之里
-    desc: 人类的聚落，市集热闹。
-    adjacent: [home, magic_forest]

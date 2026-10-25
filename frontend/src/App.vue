@@ -9,6 +9,8 @@ import SaveScreen from './components/SaveScreen.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import CharacterListModal from './components/CharacterListModal.vue'
 import CharacterDetail from './components/CharacterDetail.vue'
+import ShopModal from './components/ShopModal.vue'
+import GiftModal from './components/GiftModal.vue'
 
 const store = useGameStore()
 const { uiMode, panel, detailChar } = storeToRefs(store)
@@ -32,6 +34,8 @@ onMounted(() => {
     <!-- 角色一览 → 点行进入详情（详情叠在列表之上） -->
     <CharacterListModal v-if="panel === 'characters'" />
     <CharacterDetail v-if="detailChar" />
+    <ShopModal v-if="panel === 'shop'" />
+    <GiftModal v-if="panel === 'gift'" />
   </div>
 </template>
 

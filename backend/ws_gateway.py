@@ -169,14 +169,20 @@ def _hub_payload(bundle: Any) -> Dict[str, Any]:
       - **暂时不可用 → 变灰**：体力不足、当天次数用完
     """
     scenes = getattr(bundle, "scenes", None)
+    catalog = getattr(bundle, "catalog", None)
     scene_id = bundle.ctx.get_location()
     scene = scenes.get(scene_id) if scenes else None
     scene_info = {
         "id": scene_id,
         "name": scenes.name_of(scene_id) if scenes else (scene_id or "未知地点"),
+        "region_name": scenes.region_name(scene.region) if scene else "",
         "desc": scene.desc if scene else "",
         "can_sleep": scenes.can_sleep(scene_id) if scenes else False,
-        "adjacent": [s.to_dict() for s in (scenes.neighbors(scene_id) if scenes else [])],
+        # 有商店的地点才有值，前端据此显示「购物」
+        "shop": {"id": scene.shop, "name": catalog.shop(scene.shop).name}
+        if (scene and scene.shop and catalog and catalog.shop(scene.shop)) else None,
+        # 可达地点（带 same_region 标记，前端分「本区域内 / 前往其他区域」）
+        "adjacent": scenes.reachable(scene_id) if scenes else [],
     }
 
     # 只显示与玩家同场景的角色
@@ -514,6 +520,88 @@ async def handle_connection(
 
                 sleep_fut = loop.run_in_executor(executor, do_sleep)
                 sleep_fut.add_done_callback(_drain_future)
+        elif mtype == "game.inventory":
+            catalog = getattr(bundle, "catalog", None)
+            items = []
+            for iid, cnt in bundle.ctx.get_inventory().to_dict().items():
+                it = catalog.item(iid) if catalog else None
+                items.append({
+                    "id": iid,
+                    "name": it.name if it else iid,
+                    "count": cnt,
+                    "gift_value": it.gift_value if it else 0,
+                    "desc": it.desc if it else "",
+                })
+            items.sort(key=lambda x: x["id"])
+            output.send({"type": "inventory.data", "payload": {"items": items}})
+        elif mtype == "game.shop":
+            # 当前场景的商店商品（价格已按商店 markup 换算）
+            scenes = getattr(bundle, "scenes", None)
+            catalog = getattr(bundle, "catalog", None)
+            shop_id = (scenes.shop_of(bundle.ctx.get_location()) if scenes else "") or ""
+            if not shop_id or catalog is None or catalog.shop(shop_id) is None:
+                output.send({"type": "shop.data",
+                             "payload": {"ok": False, "reason": "这里没有商店"}})
+            else:
+                goods = catalog.shop_goods(shop_id)
+                money = bundle.ctx.get_player_stat("money", 0)
+                for g in goods:
+                    g["affordable"] = money >= g["price"]
+                output.send({"type": "shop.data", "payload": {
+                    "ok": True,
+                    "shop": {"id": shop_id, "name": catalog.shop(shop_id).name},
+                    "goods": goods,
+                    "money": money,
+                }})
+        elif mtype == "game.buy":
+            catalog = getattr(bundle, "catalog", None)
+            item_id = str(payload.get("item", ""))
+            qty = max(1, int(payload.get("count", 1) or 1))
+            if catalog is None or catalog.item(item_id) is None:
+                output.send({"type": "buy.result",
+                             "payload": {"ok": False, "reason": "没有这种商品"}})
+            else:
+                it = catalog.item(item_id)
+                total = it.price * qty
+                if bundle.ctx.get_player_stat("money", 0) < total:
+                    output.send({"type": "buy.result",
+                                 "payload": {"ok": False, "item": item_id,
+                                             "reason": f"钱不够（需要 {total}）"}})
+                else:
+                    bundle.ctx.modify_player_stat("money", -total)
+                    bundle.ctx.add_item(item_id, qty)
+                    bundle.api._push_status()
+                    output.send({"type": "buy.result",
+                                 "payload": {"ok": True, "item": item_id, "count": qty,
+                                             "cost": total,
+                                             "money": bundle.ctx.get_player_stat("money", 0)}})
+                    _send_characters(bundle, output)
+        elif mtype == "game.gift":
+            catalog = getattr(bundle, "catalog", None)
+            char_id = str(payload.get("char", ""))
+            item_id = str(payload.get("item", ""))
+            if bundle.ctx.get_character(char_id) is None:
+                output.send({"type": "gift.result",
+                             "payload": {"ok": False, "reason": "没有这个角色"}})
+            elif bundle.ctx.get_item_count(item_id) < 1:
+                output.send({"type": "gift.result",
+                             "payload": {"ok": False, "reason": "背包里没有这件东西"}})
+            else:
+                gain = catalog.gift_value(item_id) if catalog else 0
+                item_name = catalog.item_name(item_id) if catalog else item_id
+                bundle.ctx.remove_item(item_id, 1)
+                new_rel = bundle.ctx.modify_character_relation(char_id, gain)
+                bundle.ctx.add_character_history(char_id, {
+                    "day": bundle.ctx.get_day(),
+                    "title": f"收到{item_name}",
+                    "changes": f"好感度{gain:+d}",
+                })
+                bundle.api._push_status()
+                output.send({"type": "gift.result",
+                             "payload": {"ok": True, "char": char_id, "item": item_id,
+                                         "gain": gain, "relation": new_rel}})
+                _send_characters(bundle, output)
+                _send_hub(bundle, output)
         elif mtype == "game.characters":
             # 前端打开角色一览/详情时拉取
             _send_characters(bundle, output)

@@ -158,8 +158,39 @@ hub = {
 
 ### 4.6.1 场景 / 行动成本
 
-**场景（Scene）** 定义在 `Data/config/scenes.yaml`，引擎启动时由 `SceneRegistry`
-加载并自动补全双向相邻关系。玩家位置即 `world.location`。
+**场景（Scene）** 是两级结构：区域（region）→ 地点（scene），定义在
+`Data/config/scenes.yaml`，启动时由 `SceneRegistry` 加载。
+
+移动可达规则：
+1. **同区域**内任意地点互通（自宅 ⇄ 市集）
+2. **相邻区域**的地点才能跨区去（人间之里 → 博丽神社 / 魔法森林）
+
+```yaml
+regions:
+  human_village: { name: 人间之里, adjacent: [shrine, forest] }
+scenes:
+  home:   { name: 自宅, region: human_village, sleep: true }
+  market: { name: 市集, region: human_village, shop: village_market }
+```
+
+Hub 的「移动」按 `same_region` 标记分两组显示：「本区域内」/「前往其他区域」。
+
+**物品与商店** 数据驱动（`Data/items/items.yaml` + `Data/shops/shops.yaml`）：
+
+```yaml
+# items.yaml
+煎茶: { name: 煎茶, price: 30, gift_value: 5 }
+# shops.yaml
+shops:
+  village_market: { name: 人间之里的市集, items: [煎茶, 团子] }
+```
+
+- 地点配了 `shop:` 才在 Hub 出现「购物」
+- 商品价格 = 物品基准价 × 商店 `markup`（默认 1.0），方便不同商店定价
+- 送礼是引擎通用行动（不占剧本按钮）：`game.gift{char,item}` → 按 `gift_value` 加好感
+
+协议：`game.shop` → `shop.data`；`game.buy{item}` → `buy.result`；
+`game.gift{char,item}` → `gift.result`；`game.inventory` → `inventory.data`。
 
 Hub 渲染规则：
 
