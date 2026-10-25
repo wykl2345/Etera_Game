@@ -56,6 +56,12 @@ const selectedName = computed(
         </div>
       </section>
 
+      <!-- 主角特殊功能栏（非行动栏）：主角自身的功能入口 -->
+      <section class="hero-bar">
+        <span class="bar-label">主角</span>
+        <button class="hero-btn" @click="store.openCharacters()">信息确认</button>
+      </section>
+
       <!-- 游戏本身的功能按钮 -->
       <section class="system">
         <button class="sys-btn primary" @click="store.advanceDay()">下一天</button>
@@ -86,7 +92,9 @@ const selectedName = computed(
 .hub-body {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 32px 40px;
+  /* 顶部让出 52px：StatusBar 是 position:absolute，不占文档流，
+     否则「今天要做什么」会被状态栏压住 */
+  padding: 68px 32px 40px;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -189,6 +197,41 @@ const selectedName = computed(
   margin-left: 6px;
   font-size: 10px;
   color: var(--fg-dim);
+}
+
+/* ── 主角特殊功能栏 ── */
+.hero-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #101419;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.bar-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--fg-dim);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #1d232c;
+}
+.hero-btn {
+  padding: 7px 16px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: all 0.15s ease;
+}
+.hero-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ── 游戏级按钮 ── */

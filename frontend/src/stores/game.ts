@@ -78,6 +78,22 @@ export interface HubButton {
   reason: string | null
 }
 
+/** 角色一览/详情数据（后端 characters.list） */
+export interface CharacterInfo {
+  char_id: string
+  name: string
+  title: string
+  tags: string[]
+  relation: number
+  relation_stage: { label: string; key: string }
+  location: string
+  stats: Record<string, number>
+  flags: Record<string, unknown>
+}
+
+/** 角色一览排序方式 */
+export type CharSort = 'relation' | 'name' | 'stage' | 'location'
+
 export interface InputRequest {
   requestId: string
   prompt: string
@@ -123,7 +139,13 @@ interface GameState {
    * 用 uiMode 切换会把整个页面替换掉（SaveScreen 渲染在 GameScreen 内），
    * 离开叙事页后就只剩空壳 —— 表现为"点保存后跳到一个只有 —— 的页面"。
    */
-  panel: 'save' | 'load' | 'settings' | null
+  panel: 'save' | 'load' | 'settings' | 'characters' | null
+  /** 角色一览数据 */
+  charactersList: CharacterInfo[]
+  /** 角色一览排序方式 */
+  charSort: CharSort
+  /** 正在查看详情的角色 ID（null = 未打开详情） */
+  detailChar: string | null
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -153,6 +175,9 @@ export const useGameStore = defineStore('game', {
     hubSelectedChar: null,
     eventFinished: false,
     panel: null,
+    charactersList: [],
+    charSort: 'relation',
+    detailChar: null,
   }),
 
   getters: {
@@ -169,6 +194,32 @@ export const useGameStore = defineStore('game', {
       return state.hubButtons
         .filter((b) => b.char === state.hubSelectedChar)
         .sort((a, b) => a.order - b.order)
+    },
+
+    /** 按当前排序方式排好的角色列表 */
+    sortedCharacters(state): CharacterInfo[] {
+      const list = [...state.charactersList]
+      const byName = (a: CharacterInfo, b: CharacterInfo) => a.name.localeCompare(b.name, 'zh')
+      switch (state.charSort) {
+        case 'name':
+          return list.sort(byName)
+        case 'stage':
+          // 关系阶段高→低，同阶段按好感
+          return list.sort((a, b) => b.relation - a.relation)
+        case 'location':
+          return list.sort(
+            (a, b) => a.location.localeCompare(b.location, 'zh') || byName(a, b),
+          )
+        case 'relation':
+        default:
+          return list.sort((a, b) => b.relation - a.relation)
+      }
+    },
+
+    /** 当前查看详情的角色数据 */
+    detailCharacter(state): CharacterInfo | null {
+      if (!state.detailChar) return null
+      return state.charactersList.find((c) => c.char_id === state.detailChar) ?? null
     },
 
     canPersist(state): boolean {
@@ -304,6 +355,12 @@ export const useGameStore = defineStore('game', {
         const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; event?: string }
         if (!p.ok) this.showToast(p.reason ?? '触发失败')
       })
+      // 角色一览/详情数据
+      wsClient.on('characters.list', (m) => {
+        const p = (m.payload ?? {}) as { characters?: CharacterInfo[] }
+        this.charactersList = p.characters ?? []
+      })
+
       // Hub 数据：角色卡片 + 剧本注册的行动按钮
       wsClient.on('hub.buttons', (m) => {
         const p = (m.payload ?? {}) as {
@@ -425,6 +482,34 @@ export const useGameStore = defineStore('game', {
     },
 
     /** ── 存档界面（模式栈：save/load）────────────────── */
+    /** 打开角色一览浮窗 */
+    openCharacters(): void {
+      this.panel = 'characters'
+      this.detailChar = null
+      wsClient.send({ type: 'game.characters' })
+    },
+
+    /** 关闭角色一览（连详情一起关） */
+    closeCharacters(): void {
+      this.detailChar = null
+      this.panel = null
+    },
+
+    /** 切换排序方式 */
+    setCharSort(sort: CharSort): void {
+      this.charSort = sort
+    },
+
+    /** 进入某角色的详情页 */
+    openCharDetail(charId: string): void {
+      this.detailChar = charId
+    },
+
+    /** 从详情返回列表 */
+    closeCharDetail(): void {
+      this.detailChar = null
+    },
+
     openSave(): void {
       this.panel = 'save'
       wsClient.send({ type: 'game.list_saves' })

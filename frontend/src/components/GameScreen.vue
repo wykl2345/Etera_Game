@@ -54,6 +54,7 @@ const { uiMode, toast } = storeToRefs(store)
         :title="store.canPersist ? '快速读取' : '对话进行中，请先完成当前对话'"
         @click="store.quickLoad"
       >快读</button>
+      <button class="tool-btn" @click="store.openCharacters">角色</button>
       <button class="tool-btn" @click="store.openSettings">设置</button>
       <button
         class="tool-btn tool-btn--accent"

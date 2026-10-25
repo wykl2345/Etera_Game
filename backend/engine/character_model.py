@@ -91,6 +91,8 @@ class CharacterModel:
         return {
             "id": template.id,
             "name": template.name,
+            "title": getattr(template, "title", "") or "",
+            "tags": list(getattr(template, "tags", []) or []),
             "stats": stats,
             "flags": dict(template.default_flags),
             "relation": template.base_relation,

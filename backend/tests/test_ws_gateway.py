@@ -154,6 +154,56 @@ def test_abort_frees_game_thread():
     asyncio.run(_run())
 
 
+class TestRelationStage:
+    """关系阶段换算（与 v1 设计文档的 7 阶段一致）。"""
+
+    def test_stage_boundaries(self):
+        from ws_gateway import _relation_stage
+
+        assert _relation_stage(-80)["label"] == "敌视"
+        assert _relation_stage(-20)["label"] == "疏远"
+        assert _relation_stage(0)["label"] == "中立"
+        assert _relation_stage(10)["label"] == "友人"
+        assert _relation_stage(30)["label"] == "亲密"
+        assert _relation_stage(60)["label"] == "恋爱"
+        assert _relation_stage(95)["label"] == "伴侣"
+        # 边界值
+        assert _relation_stage(9)["label"] == "中立"
+        assert _relation_stage(29)["label"] == "友人"
+        assert _relation_stage(100)["label"] == "伴侣"
+
+
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_characters_payload_has_meta(tmp_path):
+    """characters.list 数据要带称号/标签/关系阶段/属性/Flag。"""
+    from engine.bootstrap import init_engine
+    from engine.script_runner import UIOutput
+    from ws_gateway import _characters_payload
+
+    class _O(UIOutput):
+        def send(self, msg):
+            pass
+
+    b = init_engine(
+        _O(), scripts_dir=str(SCRIPTS_DIR),
+        characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+    )
+    b.ctx.set_character_relation("reimu", 15)
+    payload = _characters_payload(b)
+
+    by_id = {c["char_id"]: c for c in payload["characters"]}
+    reimu = by_id["reimu"]
+    assert reimu["name"] == "博丽灵梦"
+    assert reimu["title"] == "幻想乡的巫女"
+    assert "shrine_maiden" in reimu["tags"]
+    assert reimu["relation"] == 15
+    assert reimu["relation_stage"]["label"] == "友人"
+    assert reimu["relation_stage"]["key"] == "friendly"
+    assert reimu["stats"]["max_hp"] == 120
+    assert isinstance(reimu["flags"], dict)
+    assert reimu["location"] == "hakurei_shrine"
+
+
 class TestHubPayload:
     """Hub 数据组装：角色卡片 + 按钮条件可用性。"""
 

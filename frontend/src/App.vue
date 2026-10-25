@@ -7,9 +7,11 @@ import HubScreen from './components/HubScreen.vue'
 import GameScreen from './components/GameScreen.vue'
 import SaveScreen from './components/SaveScreen.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import CharacterListModal from './components/CharacterListModal.vue'
+import CharacterDetail from './components/CharacterDetail.vue'
 
 const store = useGameStore()
-const { uiMode, panel } = storeToRefs(store)
+const { uiMode, panel, detailChar } = storeToRefs(store)
 
 onMounted(() => {
   store.connect()
@@ -27,6 +29,9 @@ onMounted(() => {
     <SaveScreen v-if="panel === 'save'" mode="save" />
     <SaveScreen v-else-if="panel === 'load'" mode="load" />
     <SettingsPanel v-if="panel === 'settings'" />
+    <!-- 角色一览 → 点行进入详情（详情叠在列表之上） -->
+    <CharacterListModal v-if="panel === 'characters'" />
+    <CharacterDetail v-if="detailChar" />
   </div>
 </template>
 

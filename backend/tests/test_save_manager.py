@@ -33,6 +33,44 @@ def _populate(ctx):
     ctx.set_character_flag("reimu", "met", True)
 
 
+class TestCharacterMeta:
+    """角色展示元数据（title/tags）要能存档往返。"""
+
+    def test_title_and_tags_survive_save_load(self, save_manager):
+        mgr, ctx = save_manager
+        ch = ctx.add_character("reimu", "博丽灵梦")
+        ch.title = "幻想乡的巫女"
+        ch.tags = ["main", "shrine_maiden"]
+        assert mgr.save(5) is True
+
+        ctx.reset()
+        assert mgr.load(5) is True
+        got = ctx.get_character("reimu")
+        assert got is not None
+        assert got.title == "幻想乡的巫女"
+        assert got.tags == ["main", "shrine_maiden"]
+
+    def test_old_save_without_meta_is_compatible(self, save_manager):
+        """老存档没有 title/tags 字段 → 读档为空值，不报错。"""
+        mgr, ctx = save_manager
+        ctx.add_character("reimu", "灵梦")
+        assert mgr.save(6) is True
+
+        import json
+
+        path = mgr._slot_path(6)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["characters"]["reimu"].pop("title", None)
+        data["characters"]["reimu"].pop("tags", None)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        ctx.reset()
+        assert mgr.load(6) is True
+        got = ctx.get_character("reimu")
+        assert got.title == ""
+        assert got.tags == []
+
+
 class TestDialogueSnapshot:
     """对话快照：存档写入 dialogue，读档带回，供前端重放。"""
 

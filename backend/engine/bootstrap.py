@@ -38,6 +38,8 @@ def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
     for template in cm.load_all().values():
         data = cm.apply_template(template)
         ch = ctx.add_character(data["id"], data["name"])
+        ch.title = data.get("title", "")
+        ch.tags = list(data.get("tags", []))
         ch.stats = StatBlock.from_dict(data["stats"])
         ch.relation = data["relation"]
         ch.location = data["location"]

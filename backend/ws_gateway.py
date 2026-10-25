@@ -116,6 +116,47 @@ def _hub_payload(bundle: Any) -> Dict[str, Any]:
     return {"characters": chars, "buttons": items}
 
 
+# 关系阶段门槛（与 v1 设计文档一致：敌视 → 伴侣）
+_RELATION_STAGES = [
+    (-100, -50, "敌视", "hostile"),
+    (-49, -10, "疏远", "distant"),
+    (-9, 9, "中立", "neutral"),
+    (10, 29, "友人", "friendly"),
+    (30, 59, "亲密", "close"),
+    (60, 79, "恋爱", "love"),
+    (80, 100, "伴侣", "soulmate"),
+]
+
+
+def _relation_stage(relation: int) -> Dict[str, str]:
+    for lo, hi, label, key in _RELATION_STAGES:
+        if lo <= relation <= hi:
+            return {"label": label, "key": key}
+    return {"label": "中立", "key": "neutral"}
+
+
+def _characters_payload(bundle: Any) -> Dict[str, Any]:
+    """角色一览 / 详情共用的数据（角色数量少，一次给全前端算排序）。"""
+    items = []
+    for cid, ch in bundle.ctx.get_all_characters().items():
+        items.append({
+            "char_id": cid,
+            "name": ch.name,
+            "title": ch.title,
+            "tags": list(ch.tags),
+            "relation": ch.relation,
+            "relation_stage": _relation_stage(ch.relation),
+            "location": ch.location,
+            "stats": ch.stats.to_dict(),
+            "flags": ch.flags.to_dict(),
+        })
+    return {"characters": items}
+
+
+def _send_characters(bundle: Any, output: UIOutput) -> None:
+    output.send({"type": "characters.list", "payload": _characters_payload(bundle)})
+
+
 def _send_hub(bundle: Any, output: UIOutput) -> None:
     output.send({"type": "hub.buttons", "payload": _hub_payload(bundle)})
 
@@ -250,6 +291,7 @@ async def handle_connection(
                     # 日常事件全部结束 → 通知前端回 Hub 并刷新
                     output.send({"type": "event.done", "payload": {"event": "day_advance"}})
                     _send_hub(bundle, output)
+                    _send_characters(bundle, output)
 
                 adv_fut = loop.run_in_executor(executor, advance)
                 adv_fut.add_done_callback(_drain_future)
@@ -275,6 +317,7 @@ async def handle_connection(
                         output.send({"type": "event.done",
                                      "payload": {"event": event_name}})
                         _send_hub(bundle, output)
+                        _send_characters(bundle, output)
 
                 ev_fut = loop.run_in_executor(executor, run_event)
                 ev_fut.add_done_callback(_drain_future)
@@ -342,6 +385,9 @@ async def handle_connection(
             # 记录上一个事件的对话（否则读档会莫名重放旧剧情）。
             recorder.begin()
             _send_hub(bundle, output)
+        elif mtype == "game.characters":
+            # 前端打开角色一览/详情时拉取
+            _send_characters(bundle, output)
         elif mtype == "game.list_saves":
             _send_saves_list(bundle, output)
         elif mtype == "game.delete_save":

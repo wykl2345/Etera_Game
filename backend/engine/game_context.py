@@ -152,6 +152,9 @@ class FlagStore:
 class CharacterState:
     id: str
     name: str
+    # 展示用元数据（来自角色 YAML，不进剧情逻辑）
+    title: str = ""
+    tags: List[str] = field(default_factory=list)
     stats: StatBlock = field(default_factory=StatBlock)
     flags: FlagStore = field(default_factory=lambda: FlagStore("character"))
     relation: int = 0
@@ -160,6 +163,7 @@ class CharacterState:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id, "name": self.name,
+            "title": self.title, "tags": list(self.tags),
             "stats": self.stats.to_dict(),
             "flags": self.flags.to_dict(),
             "relation": self.relation, "location": self.location,
@@ -170,6 +174,9 @@ class CharacterState:
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
+            # 老存档没有这两个字段 → 空值，向后兼容
+            title=data.get("title", ""),
+            tags=list(data.get("tags", [])),
             stats=StatBlock.from_dict(data.get("stats", {})),
             flags=FlagStore.from_dict("character", data.get("flags", {})),
             relation=int(data.get("relation", 0)),
