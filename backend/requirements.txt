@@ -1,1 +1,9 @@
-websockets>=14.0
+# Etera_Game backend deps (Python 3.12 + .venv)
+# install: .venv/bin/pip install -r backend/requirements.txt
+
+lupa>=2.0          # Lua sandbox (pinned: import lupa.lua54, see ADR-0004)
+websockets>=14.0   # WS gateway (new asyncio API since 14.0)
+PyYAML>=6.0        # character/scenario YAML config
+
+# dev / test
+pytest>=7.4

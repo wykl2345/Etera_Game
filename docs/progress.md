@@ -89,7 +89,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | `3ed2335` | **Phase 3**：存档系统 + 状态栏 + 存档界面 + 模式栈，102 测试 |
 | `25acf53` | **Phase 4**：逐字打印/设置面板/音频 + 小游戏 Canvas 原型 |
 | `f7094e9` | 小游戏模块化（注册表 + DSL minigame.start 阻塞触发）+ UI 模式栈修复 |
-| `9e7345e` | （最新）段落点击推进系列修复收尾 |
+| `efe6e1e` → `f20dd05` | 交互打磨系列（共 12 提交）：小游戏协议 41 指令回写 / 逐字打印 deep watch 修复 / 段落点击推进(▼) / textIdle 门控 / autoAdvance 连续播放 / game.abort 释放线程 / 存档删除 / 立绘路径对齐 / stop.sh |
 
 查看 v1 源码示例：
 ```bash

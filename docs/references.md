@@ -16,7 +16,7 @@
 | Vite | 8.x | **要求 Node 20.19+ / 22.12+**；WSL 已装 **v24.19.0**（`~/.local/bin`） |
 | Node (WSL) | v24.19.0 | 2026-08 安装，PATH 已写入 `~/.bashrc`；npm 11.17.0 |
 | Pinia | 4.x | peer: `vue ^3.5.11` + `typescript >=5.6.0` |
-| TypeScript | 7.x | 官方推荐 `<script setup lang="ts">` |
+| TypeScript | 5.9.3 | **必须锁 5.9.x**：TS 7 与 vue-tsc 3.x 不兼容（ERR_PACKAGE_PATH_NOT_EXPORTED，见 progress.md 踩坑）；官方推荐 <script setup lang="ts"> 写法 |
 
 ---
 

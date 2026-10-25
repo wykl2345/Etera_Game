@@ -91,7 +91,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 
 ### 4.4 完整映射
 
-40 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
+41 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
 
 | Lua API (DSL.txt) | 方向 | WS 消息 |
 |---|---|---|
@@ -229,7 +229,7 @@ EE1/
 │   ├── images/  audio/  fonts/
 └── docs/                        # 文档体系（agent 开发的事实来源）
     ├── architecture.md          # 本文档：架构 + WS 协议
-    ├── requirements.md          # PRD：Phase 1-2 需求条目 + 验收标准
+    ├── requirements.md          # PRD：Phase 1-4 需求条目 + 验收标准
     ├── references.md            # 官方文档链接 + 版本坑位 + v1 源码查阅
     ├── adr/                     # 决策记录 0001-0006
     └── archive/v1/              # v1 归档：4 份文档 + status-bar-mode-stack PRD
