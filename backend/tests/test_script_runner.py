@@ -271,6 +271,44 @@ class TestApiBridge:
         assert env["output"].messages[-1]["payload"]["color"] is None
 
 
+    def test_event_emit_payload_from_lua(self, env):
+        """event.emit 的 Lua table payload 必须透传到订阅者的 ctx.data。
+
+        回归：_event_emit 曾用 isinstance(payload, dict) 判空，而 lupa 的
+        LuaTable 不是 dict，导致 payload 恒被丢弃；Lua handler 访问
+        ctx.data["score"] 时抛 KeyError，会中断整个剧本。
+        """
+        from engine.event_bus import EventContext
+
+        sandbox, bus = env["sandbox"], env["bus"]
+        received = []
+
+        def handler(ctx: EventContext):
+            received.append(dict(ctx.data))
+
+        bus.subscribe("custom:probe", handler)
+        sandbox.execute('event.emit("custom:probe", { score = 42, tag = "x" })')
+
+        assert received, "订阅者未被调用"
+        assert received[0]["score"] == 42
+        assert received[0]["tag"] == "x"
+
+    def test_event_emit_without_payload(self, env):
+        """不带 payload 时 ctx.data 为空，不应报错。"""
+        from engine.event_bus import EventContext
+
+        api, bus = env["api"], env["bus"]
+        received = []
+
+        def handler(ctx: EventContext):
+            received.append(dict(ctx.data))
+
+        bus.subscribe("custom:noargs", handler)
+        api._event_emit("custom:noargs")
+
+        assert received == [{}]
+
+
 # ══════════════════ 端到端：剧本加载 + 完整流程 ══════════════════
 class TestEndToEnd:
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")

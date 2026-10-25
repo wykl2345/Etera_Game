@@ -1,6 +1,6 @@
 """API 白名单（API Bridge）—— Lua 沙箱中唯一可调用的受限指令集。
 
-实测 v1 共 **40 个** API（13 ui + 13 data + 3 event + 5 util + 6 world）。
+指令集共 **41 个** API（13 ui + 13 data + 3 event + 5 util + 6 world + 1 minigame）。
 阻塞指令（ask_choice/ask_input）经 scheduler 挂起/恢复（asyncio Future，见 script_runner）。
 """
 from __future__ import annotations
@@ -311,7 +311,7 @@ class LuaAPI:
 
     # ══════════════════ event.（3）══════════════════════
     def _event_emit(self, event_name: str, payload: Optional[Dict[str, Any]] = None) -> None:
-        kwargs = dict(payload) if isinstance(payload, dict) else {}
+        kwargs = _to_dict(payload) if payload is not None else {}
         self._bus.emit(str(event_name), **kwargs)
 
     def _event_after_days(self, days: int, callback: Callable) -> None:
