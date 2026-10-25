@@ -1,6 +1,6 @@
 ================================================================================
             Etera_Game Lua DSL 指令参考手册
-            引擎版本: 1.2.0  最后更新: 2026-05-19
+            引擎版本: 2.0.0  最后更新: 2026-08-19
 ================================================================================
 
 本文档列出了Lua事件脚本中可用的全部API指令。与 Python api_bridge.py 一一对应，
@@ -43,7 +43,7 @@
 ui.text(text, color?, bold?)
     显示文本到日志区。
     text    : string  显示的文本内容
-    color   : string? 颜色 (white/red/green/blue/yellow/cyan/magenta/pink/gray/black)
+    color   : string? 颜色 (white/red/green/blue/yellow/cyan/pink/gray/orange/purple)
     bold    : bool?   是否加粗，默认 false
     示例：
         ui.text("你好，世界！")
@@ -224,13 +224,16 @@ world.get_time()
 
 world.set_time(time)
     设置时段。time 为上述字符串之一。
+    注：当前版本不自动 emit on_time_change（事件名已预留）。
 
 world.get_location()
     获取当前位置ID。
     返回 : string
 
 world.set_location(location)
-    设置当前位置。会触发 on_location_change 事件。
+    设置当前位置。
+    注：当前版本仅更新状态并推送 status.sync，不自动 emit
+    on_location_change（该事件名已预留，尚无触发点）。
 
 
 --------------------------------------------------------------------------------
@@ -238,15 +241,29 @@ world.set_location(location)
 --------------------------------------------------------------------------------
 
 event.emit(event_name, payload?)
-    触发自定义事件。
+    触发自定义事件（同步：立即调用所有已注册监听者）。
     event_name : string  事件名（建议 custom:xxx 前缀）
-    payload    : table?  附加数据
-
-event.after_days(days, callback)
-    安排N天后执行回调。
+    payload    : table?  附加数据，会装进 ctx.data 传给监听者
+    示例：
+        event.emit("custom:met_npc", { npc = "reimu", score = 10 })
 
 event.listen(event_name, handler)
-    运行时注册事件监听。handler 为 Lua 函数。
+    运行时注册事件监听（与 event.emit 配套）。
+    handler : function  接收 1 个参数：事件上下文 ctx
+                         ctx.data 即 emit 时传入的 payload 表
+              也允许声明为无参函数 function()，此时忽略 ctx
+    示例：
+        event.listen("custom:met_npc", function(ctx)
+            local npc = ctx.data["npc"]
+            ui.text("遇见了 " .. tostring(npc))
+        end)
+    注意：同一事件可注册多个 handler，按优先级/注册顺序依次调用。
+
+event.after_days(days, callback)
+    安排 N 天后执行回调。
+    days     : number  延后天数
+    callback : function 到期执行的回调
+    注：当前版本为惰性占位（仅登记到 temp，不会真正定时触发）。
 
 
 --------------------------------------------------------------------------------
@@ -297,16 +314,20 @@ minigame.start(game_id, options?)
 七、颜色常量速查表
 ================================================================================
 
-    "white"    白色    #FFFFFF
-    "red"      红色    #FF4444
-    "green"    绿色    #44FF44
-    "blue"     蓝色    #4488FF
-    "yellow"   黄色    #FFFF44
-    "cyan"     青色    #44FFFF
-    "magenta"  品红    #FF44FF
-    "pink"     粉色    #FF88C8
-    "gray"     灰色    #888888
-    "black"    黑色    #000000
+    "white"    正常文本   #e5e7eb
+    "red"      警告/失败  #e07a6a
+    "green"    成功/通过  #7fd88f
+    "blue"     提示       #7ab8e8
+    "yellow"   强调/标题  #e8c15a
+    "cyan"     系统旁白   #7fd8d4
+    "pink"     NPC 台词   #e89ac8
+    "gray"    次要/说明   #8b8f98
+    "orange"   提醒       #e8a15a
+    "purple"   魔法/特殊  #b08ae8
+
+    色值由 frontend/src/style.css 的 .tc-* 类定义；后端
+    api_bridge.TEXT_COLORS 使用同一白名单，列表之外的颜色会被
+    静默降级为默认色（不报错）。
 
 
 ================================================================================

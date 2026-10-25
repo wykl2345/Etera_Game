@@ -1,6 +1,6 @@
 # Etera_Game 开发进度记录
 
-> 更新: 2026-08-18 | 状态: 引擎平台完成（Phase 1-4 全达成），进入内容创作阶段
+> 更新: 2026-08-19 | 状态: 引擎平台完成（Phase 1-4 全达成），进入内容创作阶段
 
 ---
 
@@ -10,7 +10,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 
 ```
 ✅ Phase 1 后端引擎     ✅ Phase 2 最小前端     ✅ Phase 3 存档/状态栏     ✅ Phase 4 打磨/小游戏
-✅ 后端 107 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
+✅ 后端 109 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
 ```
 
 ## 二、完成度评估
@@ -24,7 +24,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 前端系统界面 | **80%** | 主菜单（Web 现代化）、状态栏（HP/MP/体力条）、存档界面（槽位/删除/拖拽）、设置面板（localStorage） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
 | 内容资产 | **10%** | 4 个 Lua 剧本（v1 的 3 个 + 演示 1 个）；美术/音频素材全空（占位显示） |
-| 测试 | **85%** | 后端 107 项（事件/状态/调度/存档/WS 端到端）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
+| 测试 | **88%** | 后端 109 项（事件/状态/调度/存档/WS 端到端 + event payload 回归）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
 | 文档体系 | **90%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×6 / DSL 契约 |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~10%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补素材 / 加小游戏）。
@@ -46,6 +46,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | LuaTable 无 `.get()` | `globals_.get("math")` 返回 None（在查 Lua 的 "get" 键），安全限制静默失效 | 改用下标 `globals_["math"]` |
 | LuaTable 迭代产出键 | `list(table)` 得到 `['1','2','3']` 而非值 | `_to_list` 用 `.values()` |
 | Lua table 参数转 dict | `minigame.start(..., {hp=30})` 收到 `{}` | `_to_dict`（keys()/values() 配对） |
+| `event.emit` payload 丢失 | Lua handler 读 `ctx.data["score"]` 抛 KeyError，整个剧本中断（后续指令全部不执行） | `_event_emit` 也要用 `_to_dict` —— 此前只修了 `minigame.start`，漏了这一处；已补回归测试 |
 | Lua 版本漂移风险 | lupa wheel 内置到 5.5，默认导入跟随升级 | ADR-0004：固定 `import lupa.lua54` |
 
 ### 后端 / asyncio 类
@@ -73,6 +74,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 |---|---|---|
 | "37 指令"是笔误 | 实测 40（后加 minigame.start 变 41） | 文档全量修正，DSL.txt 一直是权威 |
 | 多剧本干扰测试 | minigame_demo 无条件触发，卡住 coffee 测试的脚本线程 | 测试里显式设置 flag 阻止干扰剧本 |
+| 自检剧本放进 `Data/scenarios` | 后端测试从 14s 变成超时（>2 分钟不结束） | 自检剧本含阻塞 `ask_choice`，且测试直接用真实剧本目录；改放 `tools/scenarios/`，用独立 `scripts_dir` 驱动 |
 | e2e 脚本端口漂移 | 测试用 8799，dev.sh 用 8765 | 统一 8765（dev.sh 默认端口） |
 | PowerShell heredoc 转义 | `cat <<'EOF'` 传参被 PowerShell 吃掉 | write_file（Windows 侧）+ cp 同步 WSL |
 
