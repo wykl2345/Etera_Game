@@ -33,7 +33,7 @@ SELFTEST_EVENT = "custom:run_selftest"
 BLOCKING = ("ui.ask_choice", "ui.ask_input", "minigame.start")
 
 # 自动应答：选择第 2 项、输入「测试者」
-AUTO_CHOICE = 2
+AUTO_CHOICE = 1
 AUTO_INPUT = "测试者"
 
 
@@ -124,14 +124,36 @@ def main() -> int:
         else:
             print(f"[{kind}] {payload}")
 
-    # ── 汇总 ──
-    ok_n = sum(1 for m in out.msgs
-               if m.get("type") == "ui.text" and "[OK]" in (m.get("payload") or {}).get("text", ""))
-    ng_n = sum(1 for m in out.msgs
-               if m.get("type") == "ui.text" and "[NG]" in (m.get("payload") or {}).get("text", ""))
+    # ── 汇总：剧本按段输出 "✓ 段名 x/y"，末尾一行 "通过 N 项 / 失败 M 项" ──
+    import re
+
+    section_pass = sum(
+        1 for m in out.msgs
+        if m.get("type") == "ui.text"
+        and (m.get("payload") or {}).get("text", "").lstrip().startswith("✓")
+    )
+    section_fail = sum(
+        1 for m in out.msgs
+        if m.get("type") == "ui.text"
+        and (m.get("payload") or {}).get("text", "").lstrip().startswith("✗")
+    )
+    total_pass = total_fail = None
+    for m in out.msgs:
+        if m.get("type") != "ui.text":
+            continue
+        txt = (m.get("payload") or {}).get("text", "")
+        mt = re.match(r"通过 (\d+) 项 / 失败 (\d+) 项", txt)
+        if mt:
+            total_pass, total_fail = int(mt.group(1)), int(mt.group(2))
 
     print("=" * 72)
-    print(f"[OK] {ok_n} 项 | [NG] {ng_n} 项")
+    if total_pass is None:
+        print("!! 未收到汇总行（剧本可能未跑到结尾）")
+        ng_n, ok_n = 1, 0
+    else:
+        print(f"段 {section_pass} 通过 / {section_fail} 失败 | "
+              f"断言 通过 {total_pass} 项 / 失败 {total_fail} 项")
+        ok_n, ng_n = total_pass, total_fail
 
     if errors:
         print(f"!! 脚本异常: {errors[0]!r}")

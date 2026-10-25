@@ -10,7 +10,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 
 1. **前后端分离**：浏览器负责渲染与排版，引擎专注游戏逻辑
 2. **节约 UI 成本 + 现代化**：系统界面（主菜单/设置/存档等）彻底 Web 化重设计
-3. **内容资产零迁移**：v1 的 40 个 Lua 指令（DSL.txt）语义不变（v2 新增 `minigame.start` 后合计 41 个），Mod 生态不受影响
+3. **内容资产零迁移**：v1 的 40 个 Lua 指令（DSL.txt）语义不变（v2 新增 `minigame.start`/`data.modify_stat`/`data.list_characters` 后合计 43 个），Mod 生态不受影响
 
 ---
 
@@ -31,7 +31,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | # | 约束 | 等级 |
 |---|---|---|
 | NFR-1 | **上下文友好**：代码与文档保持轻量，避免大文件 | 软 |
-| NFR-2 | **Mod 兼容**：v1 的 40 个 Lua 指令语义完全不变（v2 仅新增 `minigame.start`，合计 41 个，无破坏性变更） | **硬** |
+| NFR-2 | **Mod 兼容**：v1 的 40 个 Lua 指令语义完全不变（v2 仅新增 `minigame.start`/`modify_stat`/`list_characters`，合计 43 个，无破坏性变更） | **硬** |
 | NFR-3 | **协议一致性**：WS 消息结构有单一事实来源（TS 类型 + Python 侧校验），防两端漂移 | **硬** |
 | NFR-4 | **性能**：文本冒险 UI 无感知延迟；小游戏 Canvas 独立渲染（60fps） | 软 |
 | NFR-5 | **可测试性**：引擎核心无 GUI 依赖，全部可单测 | 软 |
@@ -51,7 +51,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | ID | 需求 | 验收标准 |
 |---|---|---|
 | P1-01 | Lua 沙箱：固定 `lupa.lua54`，`register_eval=False`、`register_builtins=False`、内存上限；移除 `os`/`io`/`debug`/`loadfile` 等危险全局；`MockLuaRuntime` 降级方案保留 | 沙箱内无法访问文件系统/网络；lupa 不可用时引擎可降级启动 |
-| P1-02 | API 白名单：**41 指令（实测：40 + minigame.start，见 DSL.txt）**（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`/`minigame.start`）挂起/恢复语义正确 | ✅ 对照 v1 测试思路逐指令验证通过 |
+| P1-02 | API 白名单：**41 指令（实测：40 + minigame.start，见 DSL.txt；后续追加 modify_stat/list_characters 现为 43）**（DSL.txt）语义与 v1 一致；阻塞指令（`ask_choice`/`ask_input`/`minigame.start`）挂起/恢复语义正确 | ✅ 对照 v1 测试思路逐指令验证通过 |
 | P1-03 | 调度器：线程池 + `concurrent.futures.Future` 挂起/恢复（替代 v1 的 Qt 嵌套 QEventLoop；**无 Lua coroutine**，脚本在线程中同步执行） | ✅ 挂起/恢复/中止测试通过 |
 | P1-04 | 事件总线：发布-订阅、同步/异步 emit、优先级、事件过滤、一次性订阅、传播停止（对齐 v1 能力） | v1 事件总线测试思路全部通过 |
 | P1-05 | 状态管理：GameContext 分层命名空间（world/player/characters/global_flags），`core` 命名空间受保护 | 命名空间隔离测试通过；脚本无法写 `core` |

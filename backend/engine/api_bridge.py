@@ -53,12 +53,32 @@ class LuaAPI:
         event_bus: Any,
         resource_manager: Any = None,
         debug_mode: bool = False,
+        sandbox: Any = None,
     ) -> None:
         self._scheduler = scheduler
         self._ctx = context
         self._bus = event_bus
         self._rm = resource_manager
         self._debug_mode = debug_mode
+        self._sandbox = sandbox
+
+    # ── Lua 值转换 ────────────────────────────────────────────
+    def _lua_table(self, seq: Any) -> Any:
+        """Python 序列 → 真 Lua table（1-based）。
+
+        直接把 Python list 交给 Lua，得到的是 userdata：`#ids` 会报
+        "attempt to get length of a POBJECT value"，下标还是 0-based。
+        Mod 作者需要 `#` / `ipairs` / 1-based 下标，所以必须走 table_from。
+        MockLuaRuntime 无 runtime 时降级返回 list。
+        """
+        items = list(seq)
+        runtime = getattr(self._sandbox, "runtime", None)
+        if runtime is not None and hasattr(runtime, "table_from"):
+            try:
+                return runtime.table_from(items)
+            except Exception:  # noqa: BLE001 - 转换失败降级
+                pass
+        return items
 
     # ── 组装 ──────────────────────────────────────────────────
     def build_env(self) -> Dict[str, Dict[str, Callable]]:
@@ -81,6 +101,7 @@ class LuaAPI:
             "data": {
                 "get_chara": self._data_get_chara,
                 "set_stat": self._data_set_stat,
+                "modify_stat": self._data_modify_stat,
                 "get_stat": self._data_get_stat,
                 "get_relation": self._data_get_relation,
                 "set_relation": self._data_set_relation,
@@ -88,6 +109,7 @@ class LuaAPI:
                 "get_flag": self._data_get_flag,
                 "set_flag": self._data_set_flag,
                 "has_flag": self._data_has_flag,
+                "list_characters": self._data_list_characters,
                 "get_inventory": self._data_get_inventory,
                 "add_item": self._data_add_item,
                 "remove_item": self._data_remove_item,
@@ -220,6 +242,13 @@ class LuaAPI:
             "relation": ch.relation, "location": ch.location,
         }
 
+    def _data_list_characters(self) -> Any:
+        """返回全部已加载角色的 ID 列表（Lua table，1-based）。
+
+        用于"随机挑一个角色"这类通用逻辑，避免剧本里把角色 ID 写死。
+        """
+        return self._lua_table(self._ctx.get_all_characters().keys())
+
     def _data_set_stat(self, target: str, stat_name: str, value: Any) -> bool:
         target, stat_name, value = str(target), str(stat_name), int(value)
         if target == "player":
@@ -236,6 +265,28 @@ class LuaAPI:
         self._bus.emit("on_character_stat_changed", target=target, stat=stat_name, value=value)
         self._push_status()
         return True
+
+    def _data_modify_stat(self, target: str, stat_name: str, delta: Any) -> int:
+        """按增量修改属性，返回新值（与 modify_relation 对称）。
+
+        剧本里"扣 30 元""加 10 点经验"必须用它 —— set_stat 是设绝对值，
+        拿它当增量会把原本数值覆盖掉（例如把钱设成 -30 而不是扣 30）。
+        """
+        target, stat_name, delta = str(target), str(stat_name), int(delta)
+        if target == "player":
+            if stat_name == "relation":
+                return 0  # 玩家没有好感度
+            new_value = self._ctx.modify_player_stat(stat_name, delta)
+        else:
+            if not self._ctx.has_character(target):
+                return 0
+            if stat_name == "relation":
+                # 转发到 modify_relation（其内部已 emit + push，直接返回）
+                return self._data_modify_relation(target, delta)
+            new_value = self._ctx.modify_character_stat(target, stat_name, delta)
+        self._bus.emit("on_character_stat_changed", target=target, stat=stat_name, value=new_value)
+        self._push_status()
+        return new_value
 
     def _data_get_stat(self, target: str, stat_name: str, default: int = 0) -> int:
         target, stat_name = str(target), str(stat_name)

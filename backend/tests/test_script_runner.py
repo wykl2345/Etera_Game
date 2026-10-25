@@ -29,6 +29,19 @@ class FakeOutput(UIOutput):
         self.messages.append(msg)
 
 
+def _wait_choice(output, first_option: str, timeout: float = 8.0):
+    """按首个选项文案等待对应的 ask_choice 消息（比按计数健壮）。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for m in output.messages:
+            if (m["type"] == "ui.ask_choice"
+                    and m["payload"]["options"]
+                    and m["payload"]["options"][0] == first_option):
+                return m
+        time.sleep(0.05)
+    return None
+
+
 @pytest.fixture
 def env():
     """完整引擎最小环境：用 init_engine 组装（与生产一致）。"""
@@ -271,6 +284,46 @@ class TestApiBridge:
         assert env["output"].messages[-1]["payload"]["color"] is None
 
 
+    def test_data_list_characters_returns_lua_table(self, env):
+        """data.list_characters() 必须返回真 Lua table：支持 # / ipairs / 1-based。
+
+        若返回 Python list，Lua 侧是 userdata，# 会报
+        "attempt to get length of a POBJECT value"，下标还是 0-based。
+        """
+        sandbox = env["sandbox"]
+        assert sandbox.execute("return type(data.list_characters())") == "table"
+        assert sandbox.execute("return #data.list_characters()") == 2  # reimu + marisa
+        first = sandbox.execute("return data.list_characters()[1]")
+        assert first in ("reimu", "marisa")
+        # 注意：lupa 的 execute 不返回 IIFE（(function()...end)()）的值，用多行写法
+        count = sandbox.execute(
+            "local n = 0\n"
+            "for _ in ipairs(data.list_characters()) do n = n + 1 end\n"
+            "return n"
+        )
+        assert count == 2
+
+    def test_data_modify_stat_is_delta(self, env):
+        """modify_stat 是增量（与 set_stat 的绝对值语义相对）。"""
+        api = env["api"]
+        api._data_set_stat("player", "money", 100)
+        assert api._data_modify_stat("player", "money", -30) == 70
+        assert api._data_get_stat("player", "money") == 70
+        assert api._data_modify_stat("player", "money", 5) == 75
+
+    def test_data_modify_stat_relation_forwards(self, env):
+        """modify_stat 对 relation 转发到 modify_relation。"""
+        api, ctx = env["api"], env["ctx"]
+        ctx.add_character("reimu", "灵梦")
+        assert api._data_modify_stat("reimu", "relation", 15) == 15
+        assert ctx.get_character_relation("reimu") == 15
+        assert api._data_modify_stat("reimu", "relation", -5) == 10
+
+    def test_data_modify_stat_unknown_target(self, env):
+        api = env["api"]
+        assert api._data_modify_stat("nobody", "hp", 5) == 0
+        assert api._data_modify_stat("player", "relation", 5) == 0
+
     def test_event_emit_payload_from_lua(self, env):
         """event.emit 的 Lua table payload 必须透传到订阅者的 ctx.data。
 
@@ -324,8 +377,8 @@ class TestEndToEnd:
         """完整闭环：加载 → 触发 on_game_start → 脚本挂起等选项 → 选择 → Flag 生效。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
         sched = env["scheduler"]
-        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
-        loader.load_all()
+        # env fixture 的 init_engine 已注册全部剧本，此处不能再 load_all()
+        # （重复注册会让每个剧本执行两次，例如早晨问候会连弹两个选项）
 
         # 游戏线程触发 on_game_start（脚本内部会挂起等待选项）
         t = threading.Thread(target=lambda: bus.emit("on_game_start"), daemon=True)
@@ -364,8 +417,8 @@ class TestEndToEnd:
     def test_intro_only_runs_once(self, env):
         """intro_completed 后再次触发不重复剧情（无新 ask_choice）。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
-        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
-        loader.load_all()
+        # env fixture 的 init_engine 已注册全部剧本，此处不能再 load_all()
+        # （重复注册会让每个剧本执行两次，例如早晨问候会连弹两个选项）
         ctx.set_global_flag("story", "intro_completed", True)
 
         bus.emit("on_game_start")
@@ -407,8 +460,8 @@ class TestEndToEnd:
         """序章第 4 选项：帮灵梦清理异变 → minigame.start → 结果回传 → 好感/金钱。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
         sched = env["scheduler"]
-        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
-        loader.load_all()
+        # env fixture 的 init_engine 已注册全部剧本，此处不能再 load_all()
+        # （重复注册会让每个剧本执行两次，例如早晨问候会连弹两个选项）
 
         t = threading.Thread(target=lambda: bus.emit("on_game_start"), daemon=True)
         t.start()
@@ -446,39 +499,83 @@ class TestEndToEnd:
         assert ctx.get_player_stat("money") == 25
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_morning_call_daily_event(self, env):
+        """早晨问候：每天触发、随机挑角色、回应影响好感、时段重置为 morning。"""
+        bus, ctx, output = env["bus"], env["ctx"], env["output"]
+        sched = env["scheduler"]
+
+        ctx.set_day(3)
+        ctx.set_time_of_day("night")           # 前一天晚上
+        ctx.set_global_flag("mushroom_test", "triggered", True)
+        ctx.set_global_flag("demo", "minigame_done", True)
+
+        before = {cid: ctx.get_character_relation(cid) for cid in ("reimu", "marisa")}
+
+        t = threading.Thread(target=lambda: bus.emit("on_day_begin"), daemon=True)
+        t.start()
+
+        morning = _wait_choice(output, "起来了")
+        assert morning is not None, "早晨问候未触发"
+        assert morning["payload"]["options"] == ["起来了", "再睡五分钟", "装作没听见"]
+
+        sched.resolve_wait(morning["requestId"], choice_index=1)
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+        # 时段被重置为早晨
+        assert ctx.get_time_of_day().value == "morning"
+        # 随机角色 +2：只有一个角色变化，且增量总和为 2
+        after = {cid: ctx.get_character_relation(cid) for cid in before}
+        deltas = [after[cid] - before[cid] for cid in before]
+        assert sum(deltas) == 2, f"应只有一个角色 +2，实际 {deltas}"
+        assert max(deltas) == 2
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_morning_call_only_once_per_day(self, env):
+        """同一天重复 emit on_day_begin，早晨问候不重复打扰。"""
+        bus, ctx, output = env["bus"], env["ctx"], env["output"]
+        sched = env["scheduler"]
+
+        ctx.set_day(4)
+        ctx.set_global_flag("mushroom_test", "triggered", True)
+        ctx.set_global_flag("demo", "minigame_done", True)
+
+        # 先把当天标记为已播，再触发 → 不应有 ask_choice
+        ctx.set_global_flag("daily", "last_morning_day", 4)
+        bus.emit("on_day_begin")
+        assert [m for m in output.messages if m["type"] == "ui.ask_choice"] == []
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_coffee_shop_daily_event(self, env):
         """日常事件：day≥5 + 灵梦好感≥20 → on_day_begin 触发咖啡店 → 选项 → Flag。"""
         bus, ctx, output = env["bus"], env["ctx"], env["output"]
         sched = env["scheduler"]
-        loader = ScenarioLoader(env["sandbox"], bus, SCRIPTS_DIR)
-        loader.load_all()
+        # env fixture 的 init_engine 已注册全部剧本，此处不能再 load_all()
+        # （重复注册会让每个剧本执行两次，例如早晨问候会连弹两个选项）
 
         # 满足触发条件
         ctx.set_day(5)
         ctx.set_character_relation("reimu", 25)
-        # 阻止其他 on_day_begin 剧本干扰（minigame_demo 会卡在 minigame.start）
+        ctx.set_player_stat("money", 100)
+        # 隔离干扰：早晨问候按天门控、蘑菇事件随机、小游戏会阻塞
+        ctx.set_global_flag("daily", "last_morning_day", 5)
+        ctx.set_global_flag("mushroom_test", "triggered", True)
         ctx.set_global_flag("demo", "minigame_done", True)
 
-        def run():
-            bus.emit("on_day_begin")
-
-        t = threading.Thread(target=run, daemon=True)
+        t = threading.Thread(target=lambda: bus.emit("on_day_begin"), daemon=True)
         t.start()
-        deadline = time.time() + 5
-        choice_msg = None
-        while time.time() < deadline:
-            msgs = [m for m in output.messages if m["type"] == "ui.ask_choice"]
-            if msgs:
-                choice_msg = msgs[-1]
-                break
-            time.sleep(0.05)
+
+        choice_msg = _wait_choice(output, "进去打招呼")
         assert choice_msg is not None, "咖啡店事件未触发"
         assert choice_msg["payload"]["options"] == ["进去打招呼", "假装没看见"]
 
-        # 选 1：付钱 → 扣钱 + 好感 +5 + met_at_cafe flag
+        # 选 1：付钱 → 扣 30 元 + 好感 +5 + met_at_cafe flag
         sched.resolve_wait(choice_msg["requestId"], choice_index=1)
         t.join(timeout=5)
         assert not t.is_alive()
         assert ctx.get_global_flag("coffee_mod", "met_at_cafe") is True
-        assert ctx.get_character_relation("reimu") == 5  # set_stat 设绝对值
+        # 增量语义：25 + 5 = 30。
+        # 旧实现误用 set_stat（设绝对值），会把好感直接覆写成 5、金钱设成 -30。
+        assert ctx.get_character_relation("reimu") == 30
+        assert ctx.get_player_stat("money") == 70
 

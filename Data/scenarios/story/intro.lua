@@ -32,7 +32,7 @@ return {
         elseif choice == 2 then
             ui.text("你决定帮灵梦打扫神社。", "white")
             data.set_flag("story", "first_choice", "shrine")
-            data.set_stat("reimu", "relation", 3)
+            data.modify_relation("reimu", 3)
         elseif choice == 3 then
             ui.text("你决定去魔法森林探险。", "white")
             data.set_flag("story", "first_choice", "forest")
@@ -49,7 +49,7 @@ return {
                 ui.text("灵梦：太厉害了！一下子就把它们打跑了！", "pink")
                 data.set_flag("story", "first_choice", "exorcism")
                 data.modify_relation("reimu", 10)
-                data.set_stat("player", "money", result.score or 20)
+                data.modify_stat("player", "money", result.score or 20)
             else
                 ui.text("灵梦：没事没事，妖怪们只是闹着玩的。", "pink")
                 data.set_flag("story", "first_choice", "exorcism_failed")

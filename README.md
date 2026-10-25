@@ -4,7 +4,7 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 
 - **后端**: Python 3.12 + asyncio（Lua 沙箱 + 事件总线 + 状态管理）
 - **前端**: Vue 3 + Vite + TypeScript（浏览器渲染）
-- **通信**: WebSocket (JSON)，41 个 Lua 指令为 Mod 契约（DSL.txt）
+- **通信**: WebSocket (JSON)，43 个 Lua 指令为 Mod 契约（DSL.txt）
 - **开发环境**: WSL Ubuntu-24.04，项目位于 `~/projects/EE1`（以 WSL 内为准）
 
 ## 文档体系（agent 开发的事实来源）
@@ -17,7 +17,7 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 | `docs/references.md` | 官方文档链接 + 版本坑位 + v1 源码查阅方法 |
 | `docs/progress.md` | 开发进度：完成度评估 + 踩坑记录 + git 留档版本 |
 | `docs/adr/` | 决策记录 0001-0006 |
-| `DSL.txt` | Mod 契约：41 个 Lua 指令（协议基准，不得变更语义） |
+| `DSL.txt` | Mod 契约：43 个 Lua 指令（协议基准，不得变更语义） |
 | `docs/archive/v1/` | v1 文档归档（含 UI 模式栈 PRD；完整源码见 git tag `pre-web-refactor`） |
 
 > 规则：开发长任务以文档驱动——先读 `requirements.md` 对应条目，再实现；新决策写入 `docs/adr/`，新术语写入 `CONTEXT.md`，新坑位写入 `references.md`。

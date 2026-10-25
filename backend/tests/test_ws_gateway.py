@@ -331,7 +331,16 @@ def test_emit_event_runs_selftest_scenario(tmp_path):
                 ok = await _recv_until(ws, "event.result", timeout=5)
                 assert ok["payload"]["ok"] is True
 
-                # 剧本应真的开始输出自检标题
+                # 剧本先弹前置选择（要不要检查修行成果），选 1 才进入自检
+                gate = await _recv_until(ws, "ui.ask_choice", timeout=8)
+                assert gate["payload"]["options"][0] == "帮我检查一下修行成果"
+                await ws.send(json.dumps({
+                    "type": "choice.made",
+                    "requestId": gate["requestId"],
+                    "payload": {"index": 1},
+                }))
+
+                # 应答后剧本才真正开始输出自检标题
                 collected = await _collect(ws, 2.5)
                 texts = [m["payload"]["text"] for m in collected if m.get("type") == "ui.text"]
                 assert any("修行成果检验" in t for t in texts), f"未收到自检标题: {texts[:8]}"

@@ -53,6 +53,11 @@ const { uiMode, toast } = storeToRefs(store)
         :title="store.canPersist ? '快速读取' : '对话进行中，请先完成当前对话'"
         @click="store.quickLoad"
       >快读</button>
+      <button
+        class="tool-btn tool-btn--accent" :disabled="!store.canPersist"
+        :title="store.canPersist ? '推进一天（触发日常事件）' : '对话进行中，请先完成当前对话'"
+        @click="store.advanceDay"
+      >下一天</button>
       <button class="tool-btn" @click="store.openSettings">设置</button>
       <!-- 调试工具：主动触发 DSL 全指令自检（会临时改动状态并恢复） -->
       <button
@@ -126,6 +131,12 @@ const { uiMode, toast } = storeToRefs(store)
 .tool-btn:hover:not(:disabled) {
   color: var(--accent);
   background: #1d232c;
+}
+.tool-btn--accent {
+  color: var(--accent);
+}
+.tool-btn--accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .tool-btn:disabled {
   opacity: 0.35;

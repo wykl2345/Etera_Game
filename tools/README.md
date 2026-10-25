@@ -14,6 +14,8 @@
 
 按钮在对话进行中会置灰（与存读档同一套判定），因为自检会连续输出大段文本，中途插入会打乱节奏。
 
+点击后剧本先弹一个前置选择（灵梦问「怎么了，有事吗？」），选「帮我检查一下修行成果」才进入检查，选别的直接退出 —— 所以是在正常对话里主动进入，不是强行插入。
+
 ### 方式二：命令行（不需要浏览器）
 
 ```bash
@@ -37,17 +39,17 @@
 
 ## 覆盖范围
 
-40 条指令（不含 `minigame.*`）：
+42 条指令（不含 `minigame.*`）：
 
 | 组 | 数量 | 指令 |
 |---|---|---|
 | `ui.*` | 13 | text / clear / show_image / hide_image / play_sound / stop_sound / play_music / stop_music / set_background / show_character / hide_character / ask_choice / ask_input |
-| `data.*` | 13 | get_chara / get_stat / set_stat / get_relation / set_relation / modify_relation / get_flag / set_flag / has_flag / get_inventory / add_item / remove_item / get_item_count |
+| `data.*` | 15 | get_chara / **list_characters** / get_stat / set_stat / **modify_stat** / get_relation / set_relation / modify_relation / get_flag / set_flag / has_flag / get_inventory / add_item / remove_item / get_item_count |
 | `world.*` | 6 | get_day / set_day / get_time / set_time / get_location / set_location |
 | `event.*` | 3 | emit / listen / after_days |
 | `util.*` | 5 | random / random_range / log / debug / sleep |
 
-断言覆盖正常路径 + 边界：属性钳制（hp 上下限）、好感度钳制（±100）、`core` 命名空间拒写、
+断言覆盖正常路径 + 边界：属性钳制（hp 上下限）、好感度钳制（±100）、`core` 命名空间拒写、`modify_stat` 增量语义、`list_characters` 返回真 Lua table（`#`/`ipairs`）、
 `char:` 命名空间隔离、不存在角色/物品的返回约定、`random_range` 反序自动交换、`get_stat`
 未知键走默认值等。
 

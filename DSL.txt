@@ -14,10 +14,15 @@
 
     return {
         on_event = "on_day_begin",    -- 监听的系统/游戏事件名
+        priority = "high",            -- 可选：执行优先级（默认 normal）
         execute = function()          -- 事件触发时执行
             -- 你的剧本逻辑
         end
     }
+
+priority 可选值：low / normal / high / critical（默认 normal）。
+同一事件有多个剧本时按优先级降序执行，同优先级保持注册（文件名）顺序。
+典型用途：早晨问候这类"每天开场"的剧本设 high，排在随机事件之前。
 
 系统预定义事件名（参考 event_bus.py EventConstants）：
     on_game_start              游戏启动时
@@ -127,6 +132,16 @@ data.get_chara(id)
         local r = data.get_chara("reimu")
         if r.relation >= 20 then ... end      -- 直接 .字段 访问
 
+data.list_characters()
+    返回全部已加载角色的 ID 列表。
+    返回 : table  Lua table（1-based，支持 # 与 ipairs）
+    示例：
+        local ids = data.list_characters()
+        if #ids > 0 then
+            local who = ids[util.random_range(1, #ids)]   -- 随机挑一个角色
+        end
+    用途：避免剧本里把角色 ID 写死，新增角色后自动参与。
+
 data.get_stat(target, stat, default?)
     获取属性值。
     target  : string  目标 ("player" 或角色ID)
@@ -147,6 +162,17 @@ data.set_stat(target, stat, value)
         data.set_stat("player", "money", 100)         -- 设钱为100
         data.set_stat("player", "hp", -10)            -- 扣血10点
         data.set_stat("reimu", "relation", 50)        -- 设好感度为50（自动转发）
+
+data.modify_stat(target, stat, delta)
+    按增量修改属性，返回新值。与 modify_relation 对称。
+    target : string  目标 ("player" 或角色ID)
+    stat   : string  属性名（relation 会自动转发到 modify_relation）
+    delta  : number  变化量（正=增加，负=减少）
+    返回   : number  修改后的值
+    示例：
+        data.modify_stat("player", "money", -30)    -- 花钱 30（不是"设为 -30"！）
+        data.modify_stat("player", "exp", 10)       -- 加经验
+    注意：set_stat 是**设绝对值**，别拿它当增量用（会把原值覆盖掉）。
 
 data.get_relation(target)
     获取角色好感度。
@@ -368,8 +394,10 @@ minigame.start(game_id, options?)
   ✓ ui.show_character(char_id, expression?, position?)
   ✓ ui.hide_character(char_id)
   ✓ data.get_chara(id) → table | nil
+  ✓ data.list_characters() → table（1-based，支持 # 与 ipairs）
   ✓ data.get_stat(target, stat, default?) → number
   ✓ data.set_stat(target, stat, value) → bool
+  ✓ data.modify_stat(target, stat, delta) → number
   ✓ data.get_relation(target) → number
   ✓ data.set_relation(target, value) → bool
   ✓ data.modify_relation(target, delta) → number

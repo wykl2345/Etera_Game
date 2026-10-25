@@ -10,21 +10,21 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 
 ```
 ✅ Phase 1 后端引擎     ✅ Phase 2 最小前端     ✅ Phase 3 存档/状态栏     ✅ Phase 4 打磨/小游戏
-✅ 后端 119 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
+✅ 后端 125 测试全绿    ✅ 前端 type-check + build    ✅ 联调验收（dev.sh 一键启动）
 ```
 
 ## 二、完成度评估
 
 | 模块 | 完成度 | 说明 |
 |---|---|---|
-| 后端引擎核心 | **95%** | Lua 沙箱（lupa54 + 安全限制 + Mock 降级）、41 指令 API 白名单、线程池调度器（Future 挂起/恢复）、事件总线、分层状态（core 保护）、剧本加载、GameContext 序列化 |
+| 后端引擎核心 | **96%** | Lua 沙箱（lupa54 + 安全限制 + Mock 降级）、43 指令 API 白名单、线程池调度器（Future 挂起/恢复）、事件总线（支持剧本声明 priority）、分层状态（core 保护）、剧本加载、GameContext 序列化 |
 | 后端存档系统 | **94%** | 版本化 JSON（2.0.0）+ 迁移链（1.0→2.0）+ 原子写入 + 备份 + 20 槽 + 快速存档 + **对话快照**（读档还原文本/背景/立绘）；断线恢复未做（记录意图） |
 | WS 网关/协议 | **92%** | 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息、`game.emit_event`（前端主动触发剧本）、存读档一致性校验（对话中拒绝存读档）；无断线重连 |
 | 前端叙事界面 | **85%** | 文本流（逐字打印 + 段落点击推进 + 快进）、选项、立绘/背景占位、输入、小游戏触发 |
 | 前端系统界面 | **80%** | 主菜单（Web 现代化）、状态栏（HP/MP/体力条）、存档界面（槽位/删除/拖拽）、设置面板（localStorage） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
-| 内容资产 | **10%** | 4 个 Lua 剧本（v1 的 3 个 + 演示 1 个）；美术/音频素材全空（占位显示） |
-| 测试 | **91%** | 后端 119 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
+| 内容资产 | **18%** | 5 个 Lua 剧本：序章 / 咖啡店 / 蘑菇事件 / **早晨问候（每日）** / 演示 + DSL 自检；日常事件链已跑通（day 2 起每天早晨 + day≥3 蘑菇 + day≥5 咖啡店）；美术/音频素材全空（占位显示） |
+| 测试 | **93%** | 后端 125 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
 | 文档体系 | **90%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×6 / DSL 契约 |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~10%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补素材 / 加小游戏）。
@@ -72,6 +72,14 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 对话中途存档存出半截画面 | 存档只序列化后端 GameContext，对话/立绘/选项在前端 store，读档后数据对不上画面 | 服务端 `_persist_blocked` 强制拒绝 + 前端按钮按 `canPersist` 置灰，只在脚本空闲时可存读档 |
 | 读档后只剩 `——` 空屏 | 空文本区占位符（`TextFlow.vue`）+ 读档只 `deserialize` 数据，画面从未存过 | 存档增加 `dialogue` 段（DialogueRecorder 记录画面类消息），读档后前端 `restoreDialogue` 重放；`restoring` 标志让文本直接铺满不重播逐字 |
 
+### 剧本 / DSL 类
+| 坑 | 现象 | 解决 |
+|---|---|---|
+| `set_stat` 当增量用 | `data.set_stat("player","money",-30)` 把钱**设成** -30；`set_stat("reimu","relation",5)` 把好感从 20+ 覆写成 5 | 新增 `data.modify_stat(target, stat, delta)`（与 modify_relation 对称），修全部 4 处误用；DSL.txt 明确标注两者语义差异 |
+| Python list 传给 Lua 是 userdata | `#ids` 报 "attempt to get length of a POBJECT value"，下标还是 0-based | 新 DSL 一律用 `runtime.table_from()` 返回真 Lua table；`data.list_characters()` 即此模式 |
+| 剧本无法声明事件优先级 | 早晨问候与随机事件同挂 `on_day_begin`，执行顺序只能靠文件名 | 剧本返回表支持 `priority = "high"`，loader 映射到 EventPriority |
+| 测试里重复 `loader.load_all()` | 每个剧本注册两次 → 早晨问候连弹两个选项 | env fixture 的 `init_engine` 已注册全部剧本，测试内不得重复 load；同时给 morning_call 加当天门控（`daily.last_morning_day`） |
+
 ### 文档 / 流程类
 | 坑 | 现象 | 解决 |
 |---|---|---|
@@ -107,10 +115,8 @@ git show pre-web-refactor:tests/test_event_bus.py
 - **内容**：剧本数量少（4 个）、美术素材全空、音频素材全空
 - **存档断线恢复**：记录意图未实现（体验优化，`docs/requirements.md` §5.6）
 - **对话中途存档**：当前禁止（Lua 栈无法序列化），只能在事件边界存；已实现对话快照（`dialogue` 段）让读档还原画面，见 `docs/architecture.md` §4.6
-- **日常事件在真实游玩中无法触发**：`game.day_advance` 协议已实现，但前端 UI 无任何入口
-  （只有 `frontend/e2e-check.mjs` 手工脚本在用），导致 `coffee_shop`(day≥5)、
-  `marisa_mushroom`(day≥3) 在浏览器里摸不到。需定：由剧本内 `world.set_day` 推进，
-  还是补一个 UI 入口
+- ~~日常事件在真实游玩中无法触发~~：已补工具条「下一天」按钮（`game.day_advance`），
+  并新增每日早晨问候剧本；door 见 `docs/architecture.md`
 - **挂起中重启的日志噪音**：`Future exception was never retrieved`，功能正常但应吞掉（见踩坑表）
 - **前端自动化测试**：无（e2e-check.mjs 为手工联调脚本）
 - **小游戏**：仅 1 个原型；肉鸽（杀戮尖塔式）未开始

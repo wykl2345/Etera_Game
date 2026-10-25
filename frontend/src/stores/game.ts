@@ -221,6 +221,11 @@ export const useGameStore = defineStore('game', {
           this.showToast(p.reason ?? '读档失败')
         }
       })
+      // 推进一天的结果
+      wsClient.on('day.result', (m) => {
+        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null }
+        if (!p.ok) this.showToast(p.reason ?? '推进失败')
+      })
       // 手动触发事件的结果（工具条「自检」等）
       wsClient.on('event.result', (m) => {
         const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; event?: string }
@@ -338,6 +343,15 @@ export const useGameStore = defineStore('game', {
 
     closeMenu(): void {
       this.popMode()
+    },
+
+    /** 工具条「下一天」：推进一天，触发 on_day_end → on_day_begin 日常事件 */
+    advanceDay(): void {
+      if (!this.canPersist) {
+        this.showToast('对话进行中，请先完成当前对话')
+        return
+      }
+      wsClient.send({ type: 'game.day_advance' })
     },
 
     /** 工具条「自检」：触发 DSL 全指令自检剧本（custom:run_selftest） */

@@ -72,7 +72,7 @@ def init_engine(
 
     sandbox = LuaSandbox()
     scheduler = ScriptScheduler(bus, sandbox, ctx, output, scripts_dir=Path(scripts_dir))
-    api = LuaAPI(scheduler, ctx, bus, debug_mode=debug_mode)
+    api = LuaAPI(scheduler, ctx, bus, debug_mode=debug_mode, sandbox=sandbox)
     sandbox.inject_api(api.build_env())
 
     loader = ScenarioLoader(sandbox, bus, Path(scripts_dir))

@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from typing import List
 
+from engine.event_bus import EventPriority
 from engine.sandbox import ScriptValidator
 
 logger = logging.getLogger(__name__)
@@ -59,10 +60,37 @@ class ScenarioLoader:
             if not on_event or not execute_fn:
                 logger.warning("剧本缺少 on_event/execute: %s", rel)
                 continue
-            self._bus.subscribe(str(on_event), execute_fn)
+            priority = self._read_priority(result, rel)
+            self._bus.subscribe(str(on_event), execute_fn, priority=priority)
             loaded.append(rel)
             logger.info("[✓] 已注册剧本: %s → %s", rel, on_event)
         return loaded
+
+    @staticmethod
+    def _read_priority(result: Any, rel: str) -> EventPriority:
+        """读取剧本可选的 priority 字段（low/normal/high/critical）。
+
+        同一事件有多个剧本时按优先级降序执行，同优先级保持注册（文件名）顺序。
+        用途：早晨问候这类"每天开场"的剧本要排在随机事件之前。
+        """
+        raw = None
+        try:
+            raw = result["priority"]
+        except (KeyError, TypeError):
+            raw = getattr(result, "priority", None)
+        if not raw:
+            return EventPriority.NORMAL
+        name = str(raw).strip().lower()
+        mapping = {
+            "low": EventPriority.LOW,
+            "normal": EventPriority.NORMAL,
+            "high": EventPriority.HIGH,
+            "critical": EventPriority.CRITICAL,
+        }
+        if name not in mapping:
+            logger.warning("剧本 priority 非法（%s）: %s，按 normal 处理", name, rel)
+            return EventPriority.NORMAL
+        return mapping[name]
 
     def list_scripts(self) -> List[str]:
         if not self.scripts_dir.exists():

@@ -16,7 +16,11 @@ return {
         if not reimu then
             return
         end
-        if reimu.relation < 20 then
+        -- 触发门槛：好感 ≥ 6。
+        -- 原先写 20，但玩家初始好感 0、每日早晨问候只 +2 且随机给某个角色，
+        -- 实际要玩二十来天才能解锁 —— 调低到 6 让它在第 5 天前后自然出现。
+        -- 想调整难度改这个数即可（纯内容参数）。
+        if reimu.relation < 6 then
             return
         end
 
@@ -34,8 +38,10 @@ return {
 
         if choice == 1 then
             ui.text("灵梦：来得正好，帮我付咖啡钱。", "pink")
-            data.set_stat("player", "money", -30)
-            data.set_stat("reimu", "relation", 5)
+            -- 注意：扣钱/加好感都要用增量 API，
+            -- set_stat 是设绝对值（曾经误用导致把好感从 20 覆写成 5）
+            data.modify_stat("player", "money", -30)
+            data.modify_relation("reimu", 5)
             data.set_flag("coffee_mod", "met_at_cafe", true)
             ui.text("（灵梦的好感度上升了！）", "yellow")
             ui.text("（花了30元钱。）", "gray")

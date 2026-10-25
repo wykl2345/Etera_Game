@@ -10,9 +10,9 @@
 --   ui.*     13  text/clear/show_image/hide_image/play_sound/stop_sound
 --                play_music/stop_music/set_background/show_character
 --                hide_character/ask_choice/ask_input
---   data.*   13  get_chara/get_stat/set_stat/get_relation/set_relation
---                modify_relation/get_flag/set_flag/has_flag/get_inventory
---                add_item/remove_item/get_item_count
+--   data.*   15  get_chara/list_characters/get_stat/set_stat/modify_stat
+--                get_relation/set_relation/modify_relation/get_flag/set_flag
+--                has_flag/get_inventory/add_item/remove_item/get_item_count
 --   world.*   6  get_day/set_day/get_time/set_time/get_location/set_location
 --   event.*   3  emit/listen/after_days
 --   util.*    5  random/random_range/log/debug/sleep
@@ -90,6 +90,23 @@ return {
             end
         end
 
+        -- ── 前置：正常的选择 UI（选了「和灵梦对话」才继续）──
+        ui.set_background("shrine", "fade")
+        ui.show_character("reimu", "normal", "right")
+        ui.text("灵梦：怎么了，有事吗？", "pink")
+
+        local gate = ui.ask_choice({
+            "帮我检查一下修行成果",
+            "没什么，随便看看",
+            "算了，你忙你的",
+        })
+        if gate ~= 1 then
+            ui.text("灵梦：那就别耽误我喝茶。", "pink")
+            ui.hide_character("reimu")
+            return
+        end
+        ui.text("灵梦：行吧，那就把该会的都过一遍。", "pink")
+
         -- ── 记录原始状态（结尾恢复）─────────────────────
         local orig_day   = world.get_day()
         local orig_time  = world.get_time()
@@ -104,8 +121,6 @@ return {
 
         ui.set_background("shrine", "fade")
         ui.text("―― 博丽神社·修行成果检验 ――", "cyan", true)
-        ui.text("灵梦：出门修行之前，先把该会的都过一遍。", "pink")
-        ui.show_character("reimu", "normal", "right")
         ui.play_music("selftest_bgm", 0.5, true)
 
         begin("一、显示与音频")
@@ -176,6 +191,31 @@ return {
 
         check("data.set_stat(不存在角色) -> false",
               data.set_stat("nobody", "hp", 1), false)
+
+        -- 增量修改（与 set_stat 的绝对值语义相对）
+        local money0 = data.get_stat("player", "money")
+        data.set_stat("player", "money", 100)
+        check("data.modify_stat(player,money,-30) 返回值",
+              data.modify_stat("player", "money", -30), 70)
+        check("  -> 是增量而非覆盖", data.get_stat("player", "money"), 70)
+        data.modify_stat("player", "money", 5)
+        check("  -> 再次累加", data.get_stat("player", "money"), 75)
+        check("data.modify_stat 关系转发 = modify_relation",
+              data.modify_stat("reimu", "relation", 10), 10)
+        check("  -> 生效", data.get_relation("reimu"), 10)
+        data.set_relation("reimu", 0)
+        data.set_stat("player", "money", money0)
+
+        -- 角色列表（返回真 Lua table：支持 # 与 ipairs / 1-based 下标）
+        local ids = data.list_characters()
+        check("data.list_characters() 非 nil", ids ~= nil, true)
+        check("  -> 可取长度（真 Lua table）", type(ids), "table")
+        check("  -> 含 reimu", ids[1] ~= nil, true)
+        local seen = 0
+        for _ in ipairs(ids) do
+            seen = seen + 1
+        end
+        check("  -> ipairs 可遍历", seen >= 1, true)
         check("data.set_stat(player,relation) -> false",
               data.set_stat("player", "relation", 50), false)
 

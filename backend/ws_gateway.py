@@ -169,14 +169,22 @@ async def handle_connection(
             bundle.scheduler.reset_abort()
         elif mtype == "game.day_advance":
             # 日循环：day+1 → on_day_end → on_day_begin（日常事件触发点）
-            def advance() -> None:
-                recorder.begin()
-                bundle.ctx.set_day(bundle.ctx.get_day() + 1)
-                bundle.bus.emit("on_day_end")
-                bundle.bus.emit("on_day_begin")
-                bundle.api._push_status()
+            blocked = _persist_blocked(bundle)
+            if blocked:
+                output.send({"type": "day.result",
+                             "payload": {"ok": False, "reason": blocked}})
+            else:
+                def advance() -> None:
+                    recorder.begin()
+                    bundle.ctx.set_day(bundle.ctx.get_day() + 1)
+                    bundle.api._push_status()
+                    # 回执先发：日常剧本可能阻塞在 ask_choice，不能等它跑完
+                    output.send({"type": "day.result",
+                                 "payload": {"ok": True, "day": bundle.ctx.get_day()}})
+                    bundle.bus.emit("on_day_end")
+                    bundle.bus.emit("on_day_begin")
 
-            loop.run_in_executor(executor, advance)
+                loop.run_in_executor(executor, advance)
         elif mtype == "game.emit_event":
             # 前端主动触发自定义事件（如工具条「自检」→ custom:run_selftest）。
             # 与 game.start 同理不 await：剧本可能阻塞在 ask_choice。
