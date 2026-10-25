@@ -51,8 +51,13 @@ watch(cgImage, () => { cgFailed.value = false })
       </div>
 
       <div class="text-area">
-        <TextFlow />
-        <ChoiceMenu />
+        <!-- 选项与输入框作为「文本流插槽」渲染，跟着对话走，而不是固定在下方 -->
+        <TextFlow>
+          <template #inline>
+            <ChoiceMenu />
+          </template>
+        </TextFlow>
+        <!-- 输入框是覆盖层（absolute，居中弹出），放在文本流外 -->
         <InputOverlay />
       </div>
 
@@ -150,6 +155,8 @@ watch(cgImage, () => { cgFailed.value = false })
   position: absolute;
   left: 0;
   right: 0;
+  /* 必须高于 .cg-layer(5)：CG 特写时对话文本仍要显示在最上层 */
+  z-index: 12;
   bottom: 0;
   min-height: 220px;
   max-height: 46%;

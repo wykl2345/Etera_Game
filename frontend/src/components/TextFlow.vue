@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 import { useSettingsStore } from '../stores/settings'
@@ -21,6 +21,9 @@ const revealed = ref<number[]>([])
 const showContinue = ref(false)
 
 let rafId = 0
+/** 有选项待选时不显示「点击继续」，避免和选项混淆 */
+const showHint = computed(() => showContinue.value && !store.choice && !store.input)
+
 /** 自动连播时的行间停顿定时器 */
 let lineTimer = 0
 
@@ -193,6 +196,12 @@ function onAdvance(): void {
   }
 }
 
+// 选项出现在文本流末尾 → 自动滚到底，避免文本很长时看不到选项
+watch(
+  () => store.choice,
+  (c) => { if (c) scrollToBottom() },
+)
+
 // 事件结束信号可能晚于最后一段打印完成 —— 此时 onRevealDone 已经跑过，
 // 不会再有推进时机，需要在这里补一次"显示点击返回"。
 watch(
@@ -249,7 +258,12 @@ onUnmounted(() => {
       {{ displayText(line, i) }}
     </p>
     <p v-if="!textFlow.length" class="placeholder">——</p>
-    <p v-if="showContinue" class="continue-hint">
+
+    <!-- 选项 / 输入框插在对话流末尾（Emuera 风格：选项也是对话的一部分） -->
+    <slot name="inline" />
+
+    <!-- 提示始终占位（只切换透明度），否则出现/消失会把对话顶得上下跳 -->
+    <p class="continue-hint" :class="{ visible: showHint }">
       {{ store.eventFinished ? '▼ 点击返回' : '▼ 点击继续' }}
     </p>
   </div>
@@ -283,16 +297,25 @@ onUnmounted(() => {
 }
 
 .continue-hint {
+  /* 恒定占位：不参与高度变化，避免提示闪烁时整段对话跳动 */
+  height: 1.6em;
   margin-top: 6px;
+  display: flex;
+  align-items: center;
   color: var(--accent);
-  opacity: 0.7;
   font-size: 12px;
-  animation: blink 1.2s ease-in-out infinite;
+  opacity: 0;
+  transition: opacity 0.15s ease;
   user-select: none;
 }
 
 @keyframes blink {
   50% { opacity: 0.3; }
+}
+
+.continue-hint.visible {
+  opacity: 0.75;
+  animation: blink 1.2s ease-in-out infinite;
 }
 
 .placeholder {
