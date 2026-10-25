@@ -18,17 +18,20 @@ const { uiMode, toast } = storeToRefs(store)
 <template>
   <!-- 点击委托：背景/文本区点击推进文本；交互组件用 .stop 防冒泡 -->
   <div class="game-screen" @click="store.advanceText()">
-    <!-- 模式栈：状态栏仅 game 模式显示（ADR-0006 / v1 PRD 规则） -->
-    <StatusBar v-if="uiMode === 'game'" />
+    <!-- 叙事层：只在叙事/小游戏模式渲染。
+         系统界面（存档/读档/设置）是全屏面板，若后面还留着叙事层，半透明
+         背景会透出空文本区的 —— 占位符，看起来像"奇怪的缓存页"。 -->
+    <template v-if="uiMode === 'game' || uiMode === 'minigame'">
+      <StatusBar />
 
-    <BackgroundLayer />
-    <CharacterLayer />
+      <BackgroundLayer />
+      <CharacterLayer />
 
-    <div class="text-area">
-      <TextFlow />
-      <ChoiceMenu />
-      <InputOverlay />
-    </div>
+      <div class="text-area">
+        <TextFlow />
+        <ChoiceMenu />
+        <InputOverlay />
+      </div>
 
     <!-- 底部工具条（系统界面，Web 化） -->
     <div v-if="uiMode === 'game'" class="toolbar" @click.stop>
@@ -53,25 +56,15 @@ const { uiMode, toast } = storeToRefs(store)
         :title="store.canPersist ? '快速读取' : '对话进行中，请先完成当前对话'"
         @click="store.quickLoad"
       >快读</button>
-      <button
-        class="tool-btn tool-btn--accent" :disabled="!store.canPersist"
-        :title="store.canPersist ? '推进一天（触发日常事件）' : '对话进行中，请先完成当前对话'"
-        @click="store.advanceDay"
-      >下一天</button>
       <button class="tool-btn" @click="store.openSettings">设置</button>
-      <!-- 调试工具：主动触发 DSL 全指令自检（会临时改动状态并恢复） -->
-      <button
-        class="tool-btn" :disabled="!store.canPersist"
-        title="运行 DSL 全指令自检（会临时改动并恢复世界状态）"
-        @click="store.runSelftest"
-      >自检</button>
       <button
         class="tool-btn tool-btn--accent"
         :title="store.eventFinished ? '本段已结束，回到行动界面' : '回到行动界面（当前对话将中止）'"
         @click="store.enterHub()"
       >返回</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
-    </div>
+      </div>
+    </template>
 
     <SaveScreen v-if="uiMode === 'save'" mode="save" />
     <SaveScreen v-else-if="uiMode === 'load'" mode="load" />

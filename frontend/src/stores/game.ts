@@ -273,7 +273,16 @@ export const useGameStore = defineStore('game', {
         }
         if (p.ok) {
           this.showToast('读档成功')
-          this.restoreDialogue(Array.isArray(p.dialogue) ? p.dialogue : [])
+          const dialogue = Array.isArray(p.dialogue) ? p.dialogue : []
+          if (dialogue.length > 0) {
+            // 存档在叙事界面：重放当时那屏对话
+            this.restoreDialogue(dialogue)
+            this.uiMode = 'game'
+          } else {
+            // 存档在 Hub（没有对话）：直接回 Hub，别停在空的 —— 页面
+            this.modeStack = []
+            this.enterHub()
+          }
         } else {
           this.showToast(p.reason ?? '读档失败')
         }
@@ -303,11 +312,10 @@ export const useGameStore = defineStore('game', {
         }
       })
 
-      // 剧本播完：只记录状态，不切界面。
-      // 理由：自动跳回 Hub 会让"刚看完的对话"存不进存档（对话快照被清空），
-      // 而玩家可能正想存档或回看；由玩家自己点「返回」回 Hub。
+      // 剧本播完 → 等最后一段文本播完，自动回 Hub（不用玩家按返回）
       wsClient.on('event.done', () => {
         this.eventFinished = true
+        this.scheduleHubReturn()
       })
 
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
@@ -424,6 +432,30 @@ export const useGameStore = defineStore('game', {
       this.popMode()
     },
 
+    /**
+     * 剧本播完后自动回 Hub。
+     *
+     * 不能立刻切：逐字打印比后端慢，剧本结束时前端可能还在播最后一段。
+     * 所以轮询等 textIdle（无打印、无待确认段落），并额外停留 1s 让玩家看完。
+     */
+    scheduleHubReturn(): void {
+      let waited = 0
+      const tick = () => {
+        if (this.uiMode !== 'game') return        // 玩家已手动离开
+        if (this.textIdle && waited >= 1000) {
+          this.enterHub()
+          return
+        }
+        waited += 250
+        if (waited > 20000) {                     // 兜底：20s 后强制回
+          this.enterHub()
+          return
+        }
+        setTimeout(tick, 250)
+      }
+      setTimeout(tick, 250)
+    },
+
     /** 进入 Hub（行动枢纽）：清空叙事区、拉取按钮列表 */
     enterHub(): void {
       this.choice = null
@@ -528,13 +560,12 @@ export const useGameStore = defineStore('game', {
     },
 
     loadFromSlot(slotId: number): void {
+      // 目标界面由 load.result 决定（有对话快照→叙事，无→Hub）
       wsClient.send({ type: 'game.load', payload: { slot_id: slotId } })
-      this.uiMode = 'game'
     },
 
     quickLoad(): void {
       wsClient.send({ type: 'game.quick_load' })
-      this.uiMode = 'game'
     },
 
     deleteSave(slotId: number): void {
