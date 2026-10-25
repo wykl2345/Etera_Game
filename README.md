@@ -16,6 +16,7 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 | `docs/requirements.md` | ★ 正式 PRD：Phase 1-4 需求条目 + 验收标准（开发按此逐条实现） |
 | `docs/references.md` | 官方文档链接 + 版本坑位 + v1 源码查阅方法 |
 | `docs/progress.md` | 开发进度：完成度评估 + 踩坑记录 + git 留档版本 |
+| `docs/美术资源规范.md` | 美术资源规格：目录/命名/尺寸/表情清单 + ComfyUI 生成参数 |
 | `docs/adr/` | 决策记录 0001-0006 |
 | `DSL.txt` | Mod 契约：53 个 Lua 指令（协议基准，不得变更语义） |
 | `docs/archive/v1/` | v1 文档归档（含 UI 模式栈 PRD；完整源码见 git tag `pre-web-refactor`） |
