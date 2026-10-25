@@ -532,16 +532,21 @@ async def handle_connection(
                     max_stamina = bundle.ctx.get_player_stat("max_stamina", 100)
                     bundle.ctx.set_player_stat("stamina", max_stamina)
                     bundle.api._push_status()
+                    # 先回执：前端据此切到叙事界面（下一天可能有早晨事件要播）
                     output.send({"type": "sleep.result", "payload": {"ok": True}})
-                    output.send({"type": "event.done", "payload": {"event": "sleep"}})
                     bundle.bus.emit("on_day_end")
                     # 推进一天 + 重置时段
                     bundle.ctx.set_day(bundle.ctx.get_day() + 1)
                     bundle.ctx.set_time_of_day("morning")
                     bundle.api._push_status()
+
+                    # on_day_begin 会同步跑所有日常剧本，其中可能有 ask_choice 阻塞；
+                    # 因此 event.done 必须放在后面 —— 玩家答完才会执行到这里，
+                    # 前端才知道"这一天的事件播完了，可以返回 Hub"。
                     bundle.bus.emit("on_day_begin")
-                    _send_hub(bundle, output)
-                    _send_characters(bundle, output)
+                    output.send({"type": "event.done",
+                                 "payload": {"event": "day_advance"}})
+                    # 不在这里推 hub：前端返回 Hub 时会主动拉（此刻数据可能已变）
 
                 sleep_fut = loop.run_in_executor(executor, do_sleep)
                 sleep_fut.add_done_callback(_drain_future)

@@ -48,8 +48,8 @@ onMounted(() => {
           </div>
           <button
             class="act buy"
-            :disabled="!g.affordable"
-            :title="g.affordable ? '' : '钱不够'"
+            :disabled="(store.status?.player.money ?? 0) < g.price"
+            :title="(store.status?.player.money ?? 0) < g.price ? '钱不够' : ''"
             @click="store.buyItem(g.id)"
           >买入</button>
         </li>

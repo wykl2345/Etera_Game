@@ -450,6 +450,8 @@ export const useGameStore = defineStore('game', {
         if (p.ok) {
           this.showToast(`卖出 ${p.item}（+${p.income} 文）`)
           this.refreshInventory()
+          // 钱变了 → 重新拉一次商品，让「买入」按钮的可买状态立即更新
+          if (this.panel === 'shop') wsClient.send({ type: 'game.shop' })
         } else {
           this.showToast(p.reason ?? '卖不出去')
         }
@@ -501,7 +503,16 @@ export const useGameStore = defineStore('game', {
         if (p.ok) {
           this.showToast('睡了一觉，体力恢复了')
           this.hubSelectedChar = null
+          // 新的一天可能有早晨事件（会弹对话/选项）—— 必须切到叙事界面，
+          // 否则 Hub 不渲染 ChoiceMenu，选项"消失"而脚本一直挂着。
           this.textFlow = []
+          this.choice = null
+          this.input = null
+          this.background = null
+          this.characters.clear()
+          this.eventFinished = false
+          this.autoAdvance = true
+          this.uiMode = 'game'
         } else {
           this.showToast(p.reason ?? '睡不着')
         }
@@ -544,6 +555,10 @@ export const useGameStore = defineStore('game', {
       // 由玩家点击（点击委托 → TextFlow.onAdvance）确认后回 Hub。
       wsClient.on('event.done', () => {
         this.eventFinished = true
+        // 本段没有产生任何对话（例如睡觉后当天没有日常事件）→ 不必停在空界面
+        if (!this.textFlow.length) {
+          this.enterHub()
+        }
       })
 
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
