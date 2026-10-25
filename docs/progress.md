@@ -107,6 +107,10 @@ git show pre-web-refactor:tests/test_event_bus.py
 - **内容**：剧本数量少（4 个）、美术素材全空、音频素材全空
 - **存档断线恢复**：记录意图未实现（体验优化，`docs/requirements.md` §5.6）
 - **对话中途存档**：当前禁止（Lua 栈无法序列化），只能在事件边界存；已实现对话快照（`dialogue` 段）让读档还原画面，见 `docs/architecture.md` §4.6
+- **日常事件在真实游玩中无法触发**：`game.day_advance` 协议已实现，但前端 UI 无任何入口
+  （只有 `frontend/e2e-check.mjs` 手工脚本在用），导致 `coffee_shop`(day≥5)、
+  `marisa_mushroom`(day≥3) 在浏览器里摸不到。需定：由剧本内 `world.set_day` 推进，
+  还是补一个 UI 入口
 - **挂起中重启的日志噪音**：`Future exception was never retrieved`，功能正常但应吞掉（见踩坑表）
 - **前端自动化测试**：无（e2e-check.mjs 为手工联调脚本）
 - **小游戏**：仅 1 个原型；肉鸽（杀戮尖塔式）未开始
