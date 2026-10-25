@@ -61,7 +61,7 @@ Job = Dict[str, Any]
 def build_jobs() -> List[Job]:
     jobs: List[Job] = []
 
-    # 立绘：512x768 生成（2:3），透明底靠 white background 提示词 + 后期抠图
+    # 立绘：832x1216 生成（2:3，SDXL 基准），透明底靠 white background + 后期抠图
     for char, exprs in {
         "reimu": ["normal", "happy", "serious"],
         "marisa": ["normal", "grin", "happy"],
@@ -69,7 +69,7 @@ def build_jobs() -> List[Job]:
         for expr in exprs:
             jobs.append({
                 "path": f"characters/{char}/{expr}.png",
-                "width": 512, "height": 768,
+                "width": 832, "height": 1216,
                 "prompt": (f"1girl, solo, {CHAR_LOOK[char]}, "
                            f"{EXPRESSION_WORDS.get(expr, expr)}, "
                            f"upper body, standing, simple background, white background, {STYLE}"),
@@ -89,7 +89,7 @@ def build_jobs() -> List[Job]:
     for name, desc in backgrounds.items():
         jobs.append({
             "path": f"backgrounds/{name}.png",
-            "width": 768, "height": 432,
+            "width": 1024, "height": 576,
             "prompt": f"{desc}, {STYLE}",
         })
 
@@ -107,7 +107,7 @@ def build_jobs() -> List[Job]:
     for name, desc in cgs.items():
         jobs.append({
             "path": f"cg/{name}.png",
-            "width": 768, "height": 432,
+            "width": 1024, "height": 576,
             "prompt": f"{desc}, cinematic, detailed background, {STYLE}",
         })
 
@@ -115,7 +115,7 @@ def build_jobs() -> List[Job]:
     for char in ("reimu", "marisa"):
         jobs.append({
             "path": f"avatars/{char}/normal.png",
-            "width": 512, "height": 512,
+            "width": 768, "height": 768,
             "prompt": (f"1girl, {CHAR_LOOK[char]}, portrait, face closeup, "
                        f"{EXPRESSION_WORDS['normal']}, simple background, {STYLE}"),
         })
@@ -184,9 +184,13 @@ class Comfy:
             return False
 
 
-def build_workflow(job: Job, ckpt: str, seed: int, steps: int, cfg: float) -> Dict[str, Any]:
-    """标准 txt2img 工作流（节点 id 固定，方便排查）。"""
-    return {
+def build_workflow(job: Job, ckpt: str, seed: int, steps: int, cfg: float,
+                   vae: str = "") -> Dict[str, Any]:
+    """标准 txt2img 工作流（节点 id 固定，方便排查）。
+
+    vae 非空时插入 VAELoader（动漫风模型配 vaeKlF8Anime2 效果更好）。
+    """
+    wf = {
         "4": {"class_type": "CheckpointLoaderSimple",
               "inputs": {"ckpt_name": ckpt}},
         "5": {"class_type": "EmptyLatentImage",
@@ -206,19 +210,34 @@ def build_workflow(job: Job, ckpt: str, seed: int, steps: int, cfg: float) -> Di
         "9": {"class_type": "SaveImage",
               "inputs": {"filename_prefix": "etera", "images": ["8", 0]}},
     }
+    if vae:
+        wf["10"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
+        wf["8"]["inputs"]["vae"] = ["10", 0]
+    return wf
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="ComfyUI 批量出图（Etera_Game）")
     ap.add_argument("--host", default="127.0.0.1:8188")
+    ap.add_argument("--out", default="",
+                    help="输出根目录（默认 <项目根>/resources/images）；"
+                         "ComfyUI 在 Windows 而脚本在 WSL 时用它指向 Windows 目录")
     ap.add_argument("--probe", action="store_true", help="只探测连接与可用模型")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划")
     ap.add_argument("--only", default="", help="只处理路径含该子串的任务")
     ap.add_argument("--force", action="store_true", help="覆盖已存在的文件")
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="生成尺寸缩放（4GB 显存建议 0.5~0.6，例如 0.5 → 立绘 416x608）")
+    ap.add_argument("--ckpt", default="", help="指定 checkpoint 文件名（默认自动挑动漫风）")
+    ap.add_argument("--vae", default="", help="指定 VAE 文件名（默认用 checkpoint 自带）")
     ap.add_argument("--seed", type=int, default=12345, help="固定 seed 保证角色一致性")
-    ap.add_argument("--steps", type=int, default=22)
+    ap.add_argument("--steps", type=int, default=18)
     ap.add_argument("--cfg", type=float, default=6.5)
     args = ap.parse_args()
+
+    global IMAGES
+    if args.out:
+        IMAGES = Path(args.out)
 
     comfy = Comfy(args.host)
     stats = comfy.probe()
@@ -236,14 +255,27 @@ def main() -> int:
     if not ckpts:
         print("[×] 没找到可用 checkpoint（models/checkpoints 为空？）")
         return 1
-    print(f"[✓] 可用模型 ({len(ckpts)}): {ckpts[:5]}")
-    ckpt = ckpts[0]
+    print(f"[✓] 可用模型 ({len(ckpts)}): {ckpts[:6]}")
+
+    # 优先动漫风 checkpoint（Illustrious / Animix 系）
+    if args.ckpt:
+        ckpt = args.ckpt
+    else:
+        prefer = ("anim", "illustrious", "anime")
+        ckpt = next(
+            (c for c in ckpts if any(k in c.lower() for k in prefer)),
+            ckpts[0],
+        )
     print(f"    使用: {ckpt}")
 
     if args.probe:
         return 0
 
     jobs = build_jobs()
+    if args.scale != 1.0:
+        for j in jobs:
+            j["width"] = max(256, int(round(j["width"] * args.scale / 8)) * 8)
+            j["height"] = max(256, int(round(j["height"] * args.scale / 8)) * 8)
     if args.only:
         jobs = [j for j in jobs if args.only in j["path"]]
     todo = [j for j in jobs if args.force or not (IMAGES / j["path"]).exists()]
@@ -258,7 +290,7 @@ def main() -> int:
     for i, job in enumerate(todo, 1):
         dest = IMAGES / job["path"]
         print(f"\n[{i}/{len(todo)}] {job['path']}")
-        wf = build_workflow(job, ckpt, args.seed, args.steps, args.cfg)
+        wf = build_workflow(job, ckpt, args.seed, args.steps, args.cfg, args.vae)
         try:
             pid = comfy.submit(wf)
         except Exception as exc:  # noqa: BLE001
@@ -281,7 +313,11 @@ def main() -> int:
         if comfy.download(img["filename"], img.get("subfolder", ""),
                           img.get("type", "output"), dest):
             size = dest.stat().st_size // 1024
-            print(f"    ✓ 保存到 {dest.relative_to(ROOT)} ({size} KB)")
+            try:
+                shown = dest.relative_to(ROOT)
+            except ValueError:
+                shown = dest
+            print(f"    ✓ 保存到 {shown} ({size} KB)")
             ok += 1
         else:
             fail += 1
