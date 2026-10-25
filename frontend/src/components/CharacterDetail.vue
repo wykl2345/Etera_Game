@@ -1,141 +1,206 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useGameStore } from '../stores/game'
+import { useGameStore, ASSET_BASE } from '../stores/game'
 
 const store = useGameStore()
 
 /** 当前页（0-based） */
 const page = ref(0)
+/** 立绘加载失败（素材为空时显示占位） */
+const portraitFailed = ref(false)
 
-/** 切换角色时回到第一页 */
-watch(() => store.detailChar, () => { page.value = 0 })
+/** 切换角色时回到第一页、重置立绘状态 */
+watch(() => store.detailChar, () => {
+  page.value = 0
+  portraitFailed.value = false
+})
 
 const ch = computed(() => store.detailCharacter)
 
-const PAGES = ['基本', '属性', '记录'] as const
+const TABS = ['基本', '关系', '记录'] as const
 
-/** 属性名 → 中文标签（未列出的直接显示原名） */
-const STAT_LABELS: Record<string, string> = {
-  hp: '生命', max_hp: '生命上限',
-  mp: '法力', max_mp: '法力上限',
-  stamina: '体力', max_stamina: '体力上限',
-  money: '金钱', exp: '经验', level: '等级',
+/** 属性行（Emuera 风格的密集数值区） */
+const STAT_ROWS: { key: string; label: string }[] = [
+  { key: 'hp', label: '生命' },
+  { key: 'mp', label: '法力' },
+  { key: 'stamina', label: '体力' },
+  { key: 'money', label: '金钱' },
+  { key: 'exp', label: '经验' },
+  { key: 'level', label: '等级' },
+]
+
+/** 关系阶段表（v1 设计文档 7 段，用于"当前阶段"高亮） */
+const STAGES = [
+  { label: '敌视', lo: -100, hi: -50 },
+  { label: '疏远', lo: -49, hi: -10 },
+  { label: '中立', lo: -9, hi: 9 },
+  { label: '友人', lo: 10, hi: 29 },
+  { label: '亲密', lo: 30, hi: 59 },
+  { label: '恋爱', lo: 60, hi: 79 },
+  { label: '伴侣', lo: 80, hi: 100 },
+]
+
+const portraitUrl = computed(() =>
+  ch.value ? `${ASSET_BASE}/images/characters/${ch.value.char_id}/normal.png` : '',
+)
+
+/** 好感 -100..100 → 0..1 */
+const relRatio = computed(() => {
+  if (!ch.value) return 0
+  return Math.max(0, Math.min(1, (ch.value.relation + 100) / 200))
+})
+
+/** 距下一阶段还差多少（已满级返回 null） */
+const nextStage = computed(() => {
+  if (!ch.value) return null
+  const idx = STAGES.findIndex((s) => ch.value!.relation >= s.lo && ch.value!.relation <= s.hi)
+  if (idx < 0 || idx >= STAGES.length - 1) return null
+  const next = STAGES[idx + 1]
+  return { label: next.label, gap: next.lo - ch.value.relation }
+})
+
+const flagEntries = computed(() => (ch.value ? Object.entries(ch.value.flags ?? {}) : []))
+
+const statValue = (key: string): string => {
+  if (!ch.value) return '—'
+  const s = ch.value.stats
+  const cur = s[key]
+  const max = s[`max_${key}`]
+  return max !== undefined ? `${cur} / ${max}` : String(cur ?? '—')
 }
-
-const bar = (cur: number, max: number): number =>
-  max <= 0 ? 0 : Math.max(0, Math.min(1, cur / max))
-
-const tone = (ratio: number): string =>
-  ratio > 0.5 ? '#7fd88f' : ratio >= 0.2 ? '#e8c15a' : '#e07a6a'
-
-const hpRatio = computed(() => (ch.value ? bar(ch.value.stats.hp, ch.value.stats.max_hp) : 0))
-const mpRatio = computed(() => (ch.value ? bar(ch.value.stats.mp, ch.value.stats.max_mp) : 0))
-const stRatio = computed(() => (ch.value ? bar(ch.value.stats.stamina, ch.value.stats.max_stamina) : 0))
-
-/** 好感度 -100..100 映射到 0..1（负数也能画出来） */
-const relRatio = computed(() => (ch.value ? bar(ch.value.relation + 100, 200) : 0))
-
-const flagEntries = computed(() =>
-  ch.value ? Object.entries(ch.value.flags ?? {}) : [],
-)
-const statEntries = computed(() =>
-  ch.value ? Object.entries(ch.value.stats ?? {}) : [],
-)
 </script>
 
 <template>
   <div class="overlay" @click.self="store.closeCharDetail()">
     <div v-if="ch" class="panel">
+      <!-- 标题行（Emuera 风格 ■ ... ■） -->
       <header class="head">
-        <div class="who">
+        <div class="title-line">
+          <span class="mark">■</span>
           <span class="name">{{ ch.name }}</span>
           <span v-if="ch.title" class="title">{{ ch.title }}</span>
+          <span class="mark">■</span>
         </div>
-        <div class="pager">
-          <button class="arrow" :disabled="page === 0" @click="page--">‹</button>
-          <span class="page-label">{{ PAGES[page] }} {{ page + 1 }}/{{ PAGES.length }}</span>
-          <button class="arrow" :disabled="page === PAGES.length - 1" @click="page++">›</button>
+        <div class="summary-line">
+          <span class="kv">好感 <b>{{ ch.relation }}</b></span>
+          <span class="sep">|</span>
+          <span class="kv">阶段 <b class="stage" :data-stage="ch.relation_stage.key">{{ ch.relation_stage.label }}</b></span>
+          <span class="sep">|</span>
+          <span class="kv">HP <b>{{ ch.stats.hp }}/{{ ch.stats.max_hp }}</b></span>
+          <span class="sep">|</span>
+          <span class="kv">MP <b>{{ ch.stats.mp }}/{{ ch.stats.max_mp }}</b></span>
+          <span class="sep">|</span>
+          <span class="kv">体力 <b>{{ ch.stats.stamina }}/{{ ch.stats.max_stamina }}</b></span>
         </div>
       </header>
 
-      <!-- 每一页内容都控制在面板高度内（面板整体 max-height + 内容滚动） -->
-      <div class="body">
-        <!-- 页 1：基本 -->
-        <section v-if="page === 0" class="page">
-          <div class="kv-row">
-            <span class="k">关系</span>
-            <span class="v">
-              <span class="stage" :data-stage="ch.relation_stage.key">
-                {{ ch.relation_stage.label }}
-              </span>
-              <span class="rel-num">好感 {{ ch.relation }}</span>
-            </span>
-          </div>
-          <div class="meter">
-            <div class="meter-fill" :style="{ width: relRatio * 100 + '%', background: '#e89ac8' }" />
-          </div>
+      <!-- 左信息 / 右立绘 -->
+      <div class="content">
+        <div class="info">
+          <!-- ── 页 1：基本 ── -->
+          <template v-if="page === 0">
+            <div class="block-title">基本情报</div>
+            <div class="rows">
+              <div class="row"><span class="k">所在地点</span><span class="v">{{ ch.location || '—' }}</span></div>
+              <div class="row">
+                <span class="k">标签</span>
+                <span class="v">
+                  <span v-for="t in ch.tags" :key="t" class="tag">{{ t }}</span>
+                  <span v-if="!ch.tags.length" class="dim">—</span>
+                </span>
+              </div>
+            </div>
 
-          <div class="kv-row">
-            <span class="k">生命</span>
-            <span class="v">{{ ch.stats.hp }} / {{ ch.stats.max_hp }}</span>
-          </div>
-          <div class="meter">
-            <div class="meter-fill" :style="{ width: hpRatio * 100 + '%', background: tone(hpRatio) }" />
-          </div>
+            <div class="block-title">属性</div>
+            <div class="rows">
+              <div v-for="s in STAT_ROWS" :key="s.key" class="row">
+                <span class="k">{{ s.label }}</span>
+                <span class="v mono">{{ statValue(s.key) }}</span>
+              </div>
+            </div>
+          </template>
 
-          <div class="kv-row">
-            <span class="k">法力</span>
-            <span class="v">{{ ch.stats.mp }} / {{ ch.stats.max_mp }}</span>
-          </div>
-          <div class="meter">
-            <div class="meter-fill" :style="{ width: mpRatio * 100 + '%', background: '#7ab8e8' }" />
-          </div>
+          <!-- ── 页 2：关系 ── -->
+          <template v-else-if="page === 1">
+            <div class="block-title">好感度</div>
+            <div class="rel-head">
+              <span class="stage big" :data-stage="ch.relation_stage.key">{{ ch.relation_stage.label }}</span>
+              <span class="rel-val mono">{{ ch.relation }} / 100</span>
+            </div>
+            <div class="meter"><div class="meter-fill rel" :style="{ width: relRatio * 100 + '%' }" /></div>
+            <p v-if="nextStage" class="hint">
+              距「{{ nextStage.label }}」还差 <b>{{ nextStage.gap }}</b> 点好感
+            </p>
+            <p v-else class="hint">已达最高阶段「伴侣」</p>
 
-          <div class="kv-row">
-            <span class="k">体力</span>
-            <span class="v">{{ ch.stats.stamina }} / {{ ch.stats.max_stamina }}</span>
-          </div>
-          <div class="meter">
-            <div class="meter-fill" :style="{ width: stRatio * 100 + '%', background: tone(stRatio) }" />
-          </div>
+            <div class="block-title">阶段对照</div>
+            <div class="rows">
+              <div
+                v-for="s in STAGES"
+                :key="s.label"
+                class="row stage-row"
+                :class="{ current: ch.relation >= s.lo && ch.relation <= s.hi }"
+              >
+                <span class="k">{{ s.label }}</span>
+                <span class="v mono dim">{{ s.lo }} ~ {{ s.hi }}</span>
+              </div>
+            </div>
+          </template>
 
-          <div class="kv-row">
-            <span class="k">当前位置</span>
-            <span class="v loc">{{ ch.location || '—' }}</span>
-          </div>
-          <div class="kv-row">
-            <span class="k">标签</span>
-            <span class="v">
-              <span v-for="t in ch.tags" :key="t" class="tag">{{ t }}</span>
-              <span v-if="!ch.tags.length" class="dim">—</span>
-            </span>
-          </div>
-        </section>
+          <!-- ── 页 3：记录 ── -->
+          <template v-else>
+            <div class="block-title">标记 (Flag)</div>
+            <div class="rows">
+              <div v-for="[key, val] in flagEntries" :key="key" class="row">
+                <span class="k mono">{{ val === true ? '☑' : val === false ? '☐' : '·' }}</span>
+                <span class="k">{{ key }}</span>
+                <span class="v" :class="{ on: val === true }">
+                  {{ val === true ? '已开启' : val === false ? '未开启' : String(val) }}
+                </span>
+              </div>
+              <p v-if="!flagEntries.length" class="dim">（该角色没有记录任何 Flag）</p>
+            </div>
 
-        <!-- 页 2：属性明细 -->
-        <section v-else-if="page === 1" class="page">
-          <div v-for="[key, val] in statEntries" :key="key" class="kv-row">
-            <span class="k">{{ STAT_LABELS[key] ?? key }}</span>
-            <span class="v">{{ val }}</span>
-          </div>
-        </section>
+            <div class="block-title">互动记录</div>
+            <p class="hint">
+              暂无记录。剧本可用 <code>data.set_flag("char:{{ ch.char_id }}", "键", 值)</code>
+              写入角色专属标记；互动历史待后续版本实现。
+            </p>
+          </template>
+        </div>
 
-        <!-- 页 3：标记 -->
-        <section v-else class="page">
-          <p class="hint">角色的专属开关（Flag）。未设置为 none 表示从未触发过。</p>
-          <div v-for="[key, val] in flagEntries" :key="key" class="kv-row">
-            <span class="k">{{ key }}</span>
-            <span class="v" :class="{ on: val === true, off: val === false }">
-              {{ val === true ? '已开启' : val === false ? '未开启' : String(val) }}
-            </span>
+        <!-- 右侧立绘：素材放 resources/images/characters/{id}/normal.png 即显示 -->
+        <aside class="portrait">
+          <img
+            v-if="!portraitFailed"
+            :src="portraitUrl"
+            class="portrait-img"
+            alt=""
+            @error="portraitFailed = true"
+          />
+          <div v-if="portraitFailed" class="portrait-ph">
+            <span class="ph-name">{{ ch.name }}</span>
+            <span class="ph-hint">立绘待补</span>
+            <span class="ph-path mono">characters/{{ ch.char_id }}/normal.png</span>
           </div>
-          <p v-if="!flagEntries.length" class="dim">（该角色没有记录任何 Flag）</p>
-        </section>
+        </aside>
       </div>
 
+      <!-- 底部页签（Emuera 风格 [1]page1 [2]page2） -->
       <footer class="foot">
-        <button class="btn" @click="store.closeCharDetail()">返回列表</button>
-        <button class="btn" @click="store.closeCharacters()">关闭</button>
+        <div class="tabs">
+          <button
+            v-for="(t, i) in TABS"
+            :key="t"
+            class="tab"
+            :class="{ active: page === i }"
+            @click="page = i"
+          >[{{ i + 1 }}] {{ t }}</button>
+        </div>
+        <div class="actions">
+          <button class="btn" @click="store.closeCharDetail()">返回列表</button>
+          <button class="btn" @click="store.closeCharacters()">关闭</button>
+        </div>
       </footer>
     </div>
   </div>
@@ -145,7 +210,7 @@ const statEntries = computed(() =>
 .overlay {
   position: absolute;
   inset: 0;
-  z-index: 40; /* 盖在角色一览之上 */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,129 +219,197 @@ const statEntries = computed(() =>
 }
 
 .panel {
-  width: min(520px, 90vw);
-  max-height: 82vh;
+  width: min(880px, 94vw);
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 20px 24px;
+  padding: 18px 22px 14px;
+  font-family: var(--font-mono);
   animation: fadeUp 0.2s ease;
 }
 
+/* ── 标题行 ── */
 .head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
-.who {
+.title-line {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+.mark {
+  color: var(--accent);
 }
 .name {
-  font-size: 16px;
   color: var(--fg);
-  letter-spacing: 0.08em;
 }
 .title {
   font-size: 11px;
   color: var(--fg-dim);
 }
-.pager {
+.summary-line {
+  margin-top: 7px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-.arrow {
-  width: 24px;
-  height: 24px;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--fg-dim);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  cursor: pointer;
-  font-family: var(--font-mono);
-}
-.arrow:hover:not(:disabled) {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.arrow:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-.page-label {
   font-size: 11px;
   color: var(--fg-dim);
-  letter-spacing: 0.06em;
-  min-width: 72px;
-  text-align: center;
+}
+.summary-line b {
+  color: var(--fg);
+  font-weight: 400;
+}
+.sep {
+  color: #2a3138;
 }
 
-/* 内容区滚动：保证单页内容不会把面板顶出屏幕 */
-.body {
+/* ── 内容：左信息 / 右立绘 ── */
+.content {
   flex: 1;
-  overflow-y: auto;
-  padding: 16px 2px 4px;
-}
-.page {
+  min-height: 0;
   display: flex;
-  flex-direction: column;
-  gap: 9px;
+  gap: 18px;
+  padding: 12px 0 8px;
+}
+.info {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
-.kv-row {
+/* Emuera 风格区块标题：□ 名称 □──────── */
+.block-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+  margin: 14px 0 7px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.1em;
+}
+.block-title:first-child {
+  margin-top: 0;
+}
+.block-title::before {
+  content: '□';
+  color: #3a434d;
+}
+.block-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font-size: 12px;
+  line-height: 1.5;
 }
 .k {
   color: var(--fg-dim);
-  letter-spacing: 0.06em;
   flex-shrink: 0;
+  min-width: 4.5em;
 }
 .v {
   color: var(--fg);
-  font-family: var(--font-mono);
-  text-align: right;
   display: flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 6px;
 }
-.loc {
-  color: #7ab8e8;
+.mono {
+  font-family: var(--font-mono);
+}
+.dim {
+  color: var(--fg-dim);
 }
 
+.tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #1d232c;
+  color: var(--fg-dim);
+}
+
+/* 关系页 */
+.rel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.rel-val {
+  font-size: 12px;
+  color: var(--accent);
+}
 .meter {
-  height: 6px;
+  height: 7px;
   background: #1a1f26;
   border-radius: 3px;
   overflow: hidden;
-  margin: -3px 0 3px;
 }
 .meter-fill {
   height: 100%;
   border-radius: 3px;
   transition: width 0.3s ease;
 }
+.meter-fill.rel {
+  background: linear-gradient(90deg, #7fd88f, #e89ac8);
+}
+.hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.7;
+}
+.hint b {
+  color: var(--accent);
+  font-weight: 400;
+}
+.hint code {
+  font-family: var(--font-mono);
+  color: #7ab8e8;
+  background: #151a20;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.stage-row.current .k,
+.stage-row.current .v {
+  color: var(--accent);
+}
+.stage-row.current::before {
+  content: '▶';
+  font-size: 9px;
+  color: var(--accent);
+  margin-right: -6px;
+}
 
 .stage {
+  color: var(--fg-dim);
   font-size: 11px;
   padding: 1px 7px;
   border-radius: 4px;
   background: #1d232c;
-  color: var(--fg-dim);
+}
+.stage.big {
+  font-size: 12px;
+  padding: 2px 10px;
 }
 .stage[data-stage='friendly'],
 .stage[data-stage='close'] {
@@ -290,45 +423,90 @@ const statEntries = computed(() =>
 .stage[data-stage='hostile'] {
   color: #e07a6a;
 }
-.rel-num {
-  color: var(--accent);
-  font-size: 12px;
-}
-
-.tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #1d232c;
-  color: var(--fg-dim);
-  font-family: var(--font-mono);
-}
-.dim {
-  color: var(--fg-dim);
-  font-size: 12px;
-}
-.hint {
-  margin: 0 0 8px;
-  font-size: 11px;
-  color: var(--fg-dim);
-  line-height: 1.6;
-}
 .on {
   color: #7fd88f;
 }
-.off {
+
+/* ── 右侧立绘 ── */
+.portrait {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f1319;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.portrait-ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  text-align: center;
+}
+.ph-name {
+  font-size: 13px;
   color: var(--fg-dim);
+  letter-spacing: 0.1em;
+}
+.ph-hint {
+  font-size: 10px;
+  color: #3a434d;
+}
+.ph-path {
+  font-size: 9px;
+  color: #2f373f;
+  word-break: break-all;
+  line-height: 1.5;
 }
 
+/* ── 底部 ── */
 .foot {
-  padding-top: 14px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+.tab {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.tab:hover {
+  color: var(--accent);
+}
+.tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.actions {
+  display: flex;
   gap: 8px;
 }
 .btn {
-  padding: 7px 20px;
-  font-size: 12px;
+  padding: 6px 16px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
   background: transparent;
