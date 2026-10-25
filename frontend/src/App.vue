@@ -5,9 +5,11 @@ import { useGameStore } from './stores/game'
 import MainMenu from './components/MainMenu.vue'
 import HubScreen from './components/HubScreen.vue'
 import GameScreen from './components/GameScreen.vue'
+import SaveScreen from './components/SaveScreen.vue'
+import SettingsPanel from './components/SettingsPanel.vue'
 
 const store = useGameStore()
-const { uiMode } = storeToRefs(store)
+const { uiMode, panel } = storeToRefs(store)
 
 onMounted(() => {
   store.connect()
@@ -20,11 +22,17 @@ onMounted(() => {
     <!-- Hub = 行动枢纽（系统界面）；game/minigame = 叙事界面 -->
     <HubScreen v-else-if="uiMode === 'hub'" />
     <GameScreen v-else />
+
+    <!-- 系统面板：悬浮在当前界面之上，不替换页面 -->
+    <SaveScreen v-if="panel === 'save'" mode="save" />
+    <SaveScreen v-else-if="panel === 'load'" mode="load" />
+    <SettingsPanel v-if="panel === 'settings'" />
   </div>
 </template>
 
 <style scoped>
 .app-root {
   height: 100%;
+  position: relative;   /* 悬浮面板的定位基准 */
 }
 </style>

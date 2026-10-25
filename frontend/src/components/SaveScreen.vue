@@ -54,7 +54,7 @@ function onSlot(slot: SaveSlotInfo): void {
     movedByDrag = false
     return
   }
-  if (store.uiMode === 'save') {
+  if (store.panel === 'save') {
     store.saveToSlot(slot.slot_id)
   } else {
     if (!slot.exists) {

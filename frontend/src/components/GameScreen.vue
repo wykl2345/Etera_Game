@@ -7,8 +7,6 @@ import CharacterLayer from './CharacterLayer.vue'
 import TextFlow from './TextFlow.vue'
 import ChoiceMenu from './ChoiceMenu.vue'
 import InputOverlay from './InputOverlay.vue'
-import SaveScreen from './SaveScreen.vue'
-import SettingsPanel from './SettingsPanel.vue'
 import MinigameHost from './MinigameHost.vue'
 
 const store = useGameStore()
@@ -66,9 +64,7 @@ const { uiMode, toast } = storeToRefs(store)
       </div>
     </template>
 
-    <SaveScreen v-if="uiMode === 'save'" mode="save" />
-    <SaveScreen v-else-if="uiMode === 'load'" mode="load" />
-    <SettingsPanel v-if="uiMode === 'settings'" />
+    <!-- save/load/settings 已上移到 App.vue 作为悬浮面板，不再在此渲染 -->
     <MinigameHost v-if="uiMode === 'minigame'" />
 
     <Transition name="toast">

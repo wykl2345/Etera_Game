@@ -118,6 +118,12 @@ interface GameState {
   hubSelectedChar: string | null
   /** 当前事件是否已播完（用于提示"可以返回了"） */
   eventFinished: boolean
+  /**
+   * 悬浮系统面板：覆盖在当前界面之上，不切换 uiMode。
+   * 用 uiMode 切换会把整个页面替换掉（SaveScreen 渲染在 GameScreen 内），
+   * 离开叙事页后就只剩空壳 —— 表现为"点保存后跳到一个只有 —— 的页面"。
+   */
+  panel: 'save' | 'load' | 'settings' | null
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -146,6 +152,7 @@ export const useGameStore = defineStore('game', {
     hubButtons: [],
     hubSelectedChar: null,
     eventFinished: false,
+    panel: null,
   }),
 
   getters: {
@@ -419,17 +426,18 @@ export const useGameStore = defineStore('game', {
 
     /** ── 存档界面（模式栈：save/load）────────────────── */
     openSave(): void {
-      this.pushMode('save')
+      this.panel = 'save'
       wsClient.send({ type: 'game.list_saves' })
     },
 
     openLoad(): void {
-      this.pushMode('load')
+      this.panel = 'load'
       wsClient.send({ type: 'game.list_saves' })
     },
 
     closeMenu(): void {
-      this.popMode()
+      // 关悬浮面板，回到原界面（uiMode 从未改变）
+      this.panel = null
     },
 
     /**
@@ -520,7 +528,7 @@ export const useGameStore = defineStore('game', {
     },
 
     openSettings(): void {
-      this.pushMode('settings')
+      this.panel = 'settings'
     },
 
     openMinigame(): void {
@@ -551,12 +559,11 @@ export const useGameStore = defineStore('game', {
         type: 'game.save',
         payload: { slot_id: slotId, description: `第${this.status?.day ?? 1}天存档` },
       })
-      this.uiMode = 'game'
+      this.panel = null      // 关面板，留在当前界面（Hub 或叙事）
     },
 
     quickSave(): void {
       wsClient.send({ type: 'game.quick_save' })
-      this.uiMode = 'game'
     },
 
     loadFromSlot(slotId: number): void {
