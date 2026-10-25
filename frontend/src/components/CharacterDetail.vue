@@ -61,6 +61,20 @@ const nextStage = computed(() => {
 
 const flagEntries = computed(() => (ch.value ? Object.entries(ch.value.flags ?? {}) : []))
 
+/** 自定义能力（按注册顺序，显示中文名） */
+const extraEntries = computed(() => {
+  if (!ch.value) return []
+  const labels = ch.value.extra_labels ?? {}
+  return Object.entries(ch.value.extra ?? {}).map(([key, val]) => ({
+    key,
+    label: labels[key] ?? key,
+    value: val,
+  }))
+})
+
+/** 互动历史（最近的在前） */
+const history = computed(() => ch.value?.history ?? [])
+
 const statValue = (key: string): string => {
   if (!ch.value) return '—'
   const s = ch.value.stats
@@ -118,6 +132,16 @@ const statValue = (key: string): string => {
                 <span class="v mono">{{ statValue(s.key) }}</span>
               </div>
             </div>
+
+            <template v-if="extraEntries.length">
+              <div class="block-title">能力</div>
+              <div class="rows">
+                <div v-for="e in extraEntries" :key="e.key" class="row">
+                  <span class="k">{{ e.label }}</span>
+                  <span class="v mono">{{ e.value }}</span>
+                </div>
+              </div>
+            </template>
           </template>
 
           <!-- ── 页 2：关系 ── -->
@@ -128,10 +152,15 @@ const statValue = (key: string): string => {
               <span class="rel-val mono">{{ ch.relation }} / 100</span>
             </div>
             <div class="meter"><div class="meter-fill rel" :style="{ width: relRatio * 100 + '%' }" /></div>
-            <p v-if="nextStage" class="hint">
-              距「{{ nextStage.label }}」还差 <b>{{ nextStage.gap }}</b> 点好感
+            <p v-if="ch.relation_stage.explicit" class="hint breakthrough">
+              当前阶段由事件突破而来（好感度自动推算为「{{ ch.relation_stage.auto_label }}」）。
+              好感度还能继续累积，但阶段需要触发对应的突破事件才会改变。
             </p>
-            <p v-else class="hint">已达最高阶段「伴侣」</p>
+            <p v-else-if="nextStage" class="hint">
+              距「{{ nextStage.label }}」还差 <b>{{ nextStage.gap }}</b> 点好感 ——
+              达到后还需触发突破事件，阶段才会改变。
+            </p>
+            <p v-else class="hint">好感度已满；阶段突破需要触发对应事件。</p>
 
             <div class="block-title">阶段对照</div>
             <div class="rows">
@@ -162,9 +191,15 @@ const statValue = (key: string): string => {
             </div>
 
             <div class="block-title">互动记录</div>
-            <p class="hint">
-              暂无记录。剧本可用 <code>data.set_flag("char:{{ ch.char_id }}", "键", 值)</code>
-              写入角色专属标记；互动历史待后续版本实现。
+            <div class="rows" v-if="history.length">
+              <div v-for="(h, i) in history" :key="i" class="row history-row">
+                <span class="k mono day">D{{ h.day }}</span>
+                <span class="v history-text">[{{ h.title }} --&gt; {{ h.changes }}]</span>
+              </div>
+            </div>
+            <p v-else class="hint">
+              暂无记录。剧本用 <code>data.log_start("{{ ch.char_id }}", "事件名")</code>
+              → 各种数值变化 → <code>data.log_commit()</code> 即可自动汇总成一条。
             </p>
           </template>
         </div>
@@ -425,6 +460,26 @@ const statValue = (key: string): string => {
 }
 .on {
   color: #7fd88f;
+}
+
+/* 互动历史 */
+.history-row {
+  align-items: baseline;
+}
+.history-row .day {
+  min-width: 2.6em;
+  color: #3a434d;
+  font-size: 11px;
+}
+.history-text {
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 阶段由事件突破时的提示强调 */
+.hint.breakthrough {
+  color: #e8c15a;
 }
 
 /* ── 右侧立绘 ── */

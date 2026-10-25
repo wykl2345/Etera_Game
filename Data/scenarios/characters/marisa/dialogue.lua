@@ -11,6 +11,7 @@ return {
     },
 
     execute = function()
+        data.log_start("marisa", "闲聊")
         local rel = data.get_relation("marisa")
 
         ui.set_background("forest", "fade")
@@ -40,5 +41,6 @@ return {
         end
 
         ui.hide_character("marisa")
+        data.log_commit()
     end
 }

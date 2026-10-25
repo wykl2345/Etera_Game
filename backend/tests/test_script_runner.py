@@ -363,6 +363,154 @@ class TestApiBridge:
 
 
 # ══════════════════ 端到端：剧本加载 + 完整流程 ══════════════════
+class TestReimuStoryLine:
+    """完整角色主线：关系突破必须走事件，好感度不会自动升阶。"""
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_stage_does_not_change_with_relation(self, env):
+        """好感度涨到很高，阶段仍保持不变（只由突破事件改变）。"""
+        api, ctx = env["api"], env["ctx"]
+        ctx.set_character_relation("reimu", 90)
+        assert ctx.get_character_stage("reimu") == "", "初始阶段应为空（未突破）"
+        # 阶段不会被 relation 自动改写
+        assert ctx.get_character_stage("reimu") == ""
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_story_01_breakthrough(self, env):
+        """触发突破事件 → 阶段变 friendly + 记录历史 + 设完成旗标。"""
+        bus, ctx, output = env["bus"], env["ctx"], env["output"]
+        sched = env["scheduler"]
+
+        ctx.set_character_relation("reimu", 10)
+
+        t = threading.Thread(target=lambda: bus.emit("story:reimu_01"), daemon=True)
+        t.start()
+
+        m = _wait_choice(output, "因为这里很舒服", timeout=5)
+        assert m is not None, "突破事件未触发"
+        sched.resolve_wait(m["requestId"], choice_index=1)
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+        assert ctx.get_character_stage("reimu") == "friendly"
+        assert ctx.get_global_flag("reimu", "story_01_done") is True
+        ch = ctx.get_character("reimu")
+        assert ch.history, "应记录互动历史"
+        entry = ch.history[0]
+        assert entry["title"] == "神社的午后"
+        assert "好感度" in entry["changes"]
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_story_01_hidden_after_done(self, tmp_path):
+        """完成后 hide_flag 生效：Hub 上不再出现该入口。"""
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+        from ws_gateway import _hub_payload
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(SCRIPTS_DIR.parent / "characters"), saves_dir=str(tmp_path),
+        )
+        b.ctx.set_character_relation("reimu", 20)
+
+        before = [x["event"] for x in _hub_payload(b)["buttons"]]
+        assert "story:reimu_01" in before, "未完成时应有入口"
+
+        b.ctx.set_global_flag("reimu", "story_01_done", True)
+        after = [x["event"] for x in _hub_payload(b)["buttons"]]
+        assert "story:reimu_01" not in after, "完成后入口应隐藏"
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_story_02_requires_previous(self, tmp_path):
+        """第 2 段剧情需要第 1 段完成 + 好感 30（require_flag）。"""
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+        from ws_gateway import _hub_payload
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(SCRIPTS_DIR.parent / "characters"), saves_dir=str(tmp_path),
+        )
+        b.ctx.set_character_relation("reimu", 40)   # 好感够
+
+        row = [x for x in _hub_payload(b)["buttons"] if x["event"] == "story:reimu_02"][0]
+        assert row["available"] is False, "未完成前置剧情时应锁定"
+
+        b.ctx.set_global_flag("reimu", "story_01_done", True)
+        row2 = [x for x in _hub_payload(b)["buttons"] if x["event"] == "story:reimu_02"][0]
+        assert row2["available"] is True
+
+
+class TestTradeAndLog:
+    """金币交易 + 互动历史自动汇总。"""
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_buy_item_insufficient_money(self, env):
+        api, ctx = env["api"], env["ctx"]
+        ctx.set_player_stat("money", 10)
+        assert api._data_buy_item("煎茶", 30) is False
+        assert ctx.get_player_stat("money") == 10, "失败时不应扣款"
+        assert ctx.get_item_count("煎茶") == 0
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_buy_and_sell_item(self, env):
+        api, ctx = env["api"], env["ctx"]
+        ctx.set_player_stat("money", 100)
+        assert api._data_buy_item("煎茶", 30, 2) is True
+        assert ctx.get_item_count("煎茶") == 2
+        assert ctx.get_player_stat("money") == 40
+
+        assert api._data_sell_item("煎茶", 15, 1) is True
+        assert ctx.get_item_count("煎茶") == 1
+        assert ctx.get_player_stat("money") == 55
+
+        assert api._data_sell_item("不存在", 10) is False
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_log_commit_summarizes_changes(self, env):
+        """log_start → 各种数值变化 → log_commit 自动汇总成一句话。"""
+        api, ctx = env["api"], env["ctx"]
+        ctx.add_character("reimu", "博丽灵梦")
+        ctx.set_player_stat("money", 100)
+
+        api._data_log_start("reimu", "测试事件")
+        api._data_modify_relation("reimu", 5)
+        api._data_modify_stat("player", "money", -30)
+        api._data_add_item("团子", 2)
+        assert api._data_log_commit() is True
+
+        history = ctx.get_character("reimu").history
+        assert len(history) == 1
+        assert history[0]["title"] == "测试事件"
+        assert "好感度+5" in history[0]["changes"]
+        assert "金钱-30" in history[0]["changes"]
+        assert "获得团子×2" in history[0]["changes"]
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_log_commit_without_start(self, env):
+        assert env["api"]._data_log_commit() is False
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_define_and_modify_extra(self, env):
+        """剧本可注册自定义能力并增量修改。"""
+        api, ctx = env["api"], env["ctx"]
+        ctx.add_character("reimu", "博丽灵梦")
+
+        assert api._data_define_stat("reimu", "sword", "剑术", 0) is True
+        assert api._data_modify_extra("reimu", "sword", 3) == 3
+        assert api._data_get_extra("reimu", "sword") == 3
+        ch = ctx.get_character("reimu")
+        assert ch.extra_labels["sword"] == "剑术"
+
+
 class TestHubButtons:
     """角色剧本声明 hub 按钮 → loader 收集。"""
 

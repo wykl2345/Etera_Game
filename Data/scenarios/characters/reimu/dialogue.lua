@@ -13,6 +13,7 @@ return {
     },
 
     execute = function()
+        data.log_start("reimu", "闲聊")
         local rel = data.get_relation("reimu")
 
         ui.set_background("shrine", "fade")
@@ -42,5 +43,6 @@ return {
         end
 
         ui.hide_character("reimu")
+        data.log_commit()
     end
 }

@@ -92,7 +92,7 @@ v1 是 Python + PySide6 桌面应用。**引擎核心（Lua 沙箱、事件总�
 
 ### 4.4 完整映射
 
-43 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
+53 个 Lua API → WS 消息的完整对照表以 `DSL.txt` 为准，此处列典型映射：
 
 | Lua API (DSL.txt) | 方向 | WS 消息 |
 |---|---|---|

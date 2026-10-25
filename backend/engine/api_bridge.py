@@ -19,6 +19,14 @@ TEXT_COLORS = {
 }
 
 
+# 互动历史里显示的属性中文名
+STAT_LABELS: Dict[str, str] = {
+    "hp": "生命", "mp": "法力", "stamina": "体力",
+    "money": "金钱", "exp": "经验", "level": "等级",
+    "relation": "好感度",
+}
+
+
 def _to_list(value: Any) -> List[Any]:
     """LuaTable / list / tuple → list。lupa LuaTable 迭代产出键，须用 values()。"""
     if isinstance(value, (list, tuple)):
@@ -61,6 +69,8 @@ class LuaAPI:
         self._rm = resource_manager
         self._debug_mode = debug_mode
         self._sandbox = sandbox
+        # 互动历史记录上下文（data.log_start 开启，log_commit 提交）
+        self._log_ctx: Optional[Dict[str, Any]] = None
 
     # ── Lua 值转换 ────────────────────────────────────────────
     def _lua_table(self, seq: Any) -> Any:
@@ -104,6 +114,16 @@ class LuaAPI:
                 "modify_stat": self._data_modify_stat,
                 "get_stat": self._data_get_stat,
                 "get_relation": self._data_get_relation,
+                "get_stage": self._data_get_stage,
+                "set_stage": self._data_set_stage,
+                "log_start": self._data_log_start,
+                "log_commit": self._data_log_commit,
+                "define_stat": self._data_define_stat,
+                "get_extra": self._data_get_extra,
+                "set_extra": self._data_set_extra,
+                "modify_extra": self._data_modify_extra,
+                "buy_item": self._data_buy_item,
+                "sell_item": self._data_sell_item,
                 "set_relation": self._data_set_relation,
                 "modify_relation": self._data_modify_relation,
                 "get_flag": self._data_get_flag,
@@ -284,6 +304,7 @@ class LuaAPI:
                 # 转发到 modify_relation（其内部已 emit + push，直接返回）
                 return self._data_modify_relation(target, delta)
             new_value = self._ctx.modify_character_stat(target, stat_name, delta)
+        self._log_add_stat(target, stat_name, delta)
         self._bus.emit("on_character_stat_changed", target=target, stat=stat_name, value=new_value)
         self._push_status()
         return new_value
@@ -313,7 +334,9 @@ class LuaAPI:
         target = str(target)
         if target == "player":
             return 0
+        old_value = self._ctx.get_character_relation(target)
         new_value = self._ctx.modify_character_relation(target, int(delta))
+        self._log_add_relation(target, new_value - old_value)
         self._bus.emit("on_character_relation_changed", target=target, value=new_value)
         self._push_status()
         return new_value
@@ -342,18 +365,162 @@ class LuaAPI:
             return ch is not None and bool(self._ctx.get_character_flag(namespace[5:], key))
         return self._ctx.has_global_flag(namespace, key)
 
+    # ── 关系阶段（突破由事件显式调用，不随好感度自动变化）────────
+    def _data_get_stage(self, target: str) -> str:
+        """取角色当前关系阶段 key；未设置过返回空串（展示层按好感度推算）。"""
+        target = str(target)
+        if target == "player":
+            return ""
+        return self._ctx.get_character_stage(target)
+
+    def _data_set_stage(self, target: str, stage: str) -> bool:
+        """设置关系阶段 —— 关系突破事件里调用。
+
+        好感度满了只是数值满，阶段必须靠事件推进，所以这里不做数值校验。
+        """
+        target, stage = str(target), str(stage)
+        if target == "player":
+            return False
+        ok = self._ctx.set_character_stage(target, stage)
+        if ok:
+            self._bus.emit("on_character_relation_changed", target=target, value=stage)
+            self._push_status()
+        return ok
+
+    # ── 互动历史 ──────────────────────────────────────────────────
+    def _data_log_start(self, target: str, title: str) -> bool:
+        """开始记录一次互动：之后的 modify_* / 物品增减会自动累积。"""
+        self._log_ctx = {
+            "char": str(target),
+            "title": str(title),
+            "relation": 0,
+            "stats": {},
+            "items": {},
+        }
+        return True
+
+    def _data_log_commit(self) -> bool:
+        """提交记录 → 角色历史里多一条 [标题 -> 数值变化]。"""
+        ctx = self._log_ctx
+        self._log_ctx = None
+        if not ctx:
+            return False
+        parts: List[str] = []
+        if ctx["relation"]:
+            parts.append(f"{STAT_LABELS['relation']}{ctx['relation']:+d}")
+        for key, delta in ctx["stats"].items():
+            if delta:
+                parts.append(f"{STAT_LABELS.get(key, key)}{delta:+d}")
+        for item_id, cnt in ctx["items"].items():
+            if cnt > 0:
+                parts.append(f"获得{item_id}×{cnt}")
+            elif cnt < 0:
+                parts.append(f"失去{item_id}×{-cnt}")
+        changes = "，".join(parts) if parts else "无变化"
+        self._ctx.add_character_history(ctx["char"], {
+            "day": self._ctx.get_day(),
+            "title": ctx["title"],
+            "changes": changes,
+        })
+        return True
+
+    def _log_add_relation(self, target: str, delta: int) -> None:
+        ctx = self._log_ctx
+        if ctx and ctx["char"] == target:
+            ctx["relation"] += int(delta)
+
+    def _log_add_stat(self, target: str, stat_name: str, delta: int) -> None:
+        ctx = self._log_ctx
+        if not ctx:
+            return
+        if ctx["char"] == target or target == "player":
+            ctx["stats"][stat_name] = ctx["stats"].get(stat_name, 0) + int(delta)
+
+    def _log_add_item(self, item_id: str, count: int) -> None:
+        ctx = self._log_ctx
+        if ctx:
+            ctx["items"][item_id] = ctx["items"].get(item_id, 0) + int(count)
+
+    # ── 自定义能力（剧本可注册，展示层按 extra_labels 显示中文名）──
+    def _data_define_stat(self, target: str, key: str, label: str, initial: Any = 0) -> bool:
+        target, key = str(target), str(key)
+        if target == "player":
+            return False
+        return self._ctx.define_character_extra(target, key, str(label), initial)
+
+    def _data_get_extra(self, target: str, key: str, default: Any = None) -> Any:
+        target, key = str(target), str(key)
+        if target == "player":
+            return default
+        return self._ctx.get_character_extra(target, key, default)
+
+    def _data_set_extra(self, target: str, key: str, value: Any) -> bool:
+        target, key = str(target), str(key)
+        if target == "player":
+            return False
+        ok = self._ctx.set_character_extra(target, key, value)
+        if ok:
+            self._push_status()
+        return ok
+
+    def _data_modify_extra(self, target: str, key: str, delta: Any) -> Any:
+        """按增量改自定义能力，返回新值（未注册时以 0 为基准）。"""
+        if str(target) == "player":
+            return 0
+        current = self._ctx.get_character_extra(str(target), str(key), 0)
+        try:
+            new_value = int(current) + int(delta)
+        except (TypeError, ValueError):
+            return current
+        self._ctx.set_character_extra(str(target), str(key), new_value)
+        self._push_status()
+        return new_value
+
+    # ── 金币交易 ──────────────────────────────────────────────────
+    def _data_buy_item(self, item_id: str, price: Any, count: int = 1) -> bool:
+        """购买：金额 = price × count；钱不够返回 false（不扣款、不给货）。"""
+        item_id = str(item_id)
+        count = max(1, int(count))
+        total = int(price) * count
+        if self._ctx.get_player_stat("money", 0) < total:
+            return False
+        self._ctx.modify_player_stat("money", -total)
+        self._ctx.add_item(item_id, count)
+        self._log_add_stat("player", "money", -total)
+        self._log_add_item(item_id, count)
+        self._bus.emit("on_inventory_changed")
+        self._push_status()
+        return True
+
+    def _data_sell_item(self, item_id: str, price: Any, count: int = 1) -> bool:
+        """出售：持有不足返回 false（不移除、不加钱）。"""
+        item_id = str(item_id)
+        count = max(1, int(count))
+        if self._ctx.get_item_count(item_id) < count:
+            return False
+        total = int(price) * count
+        self._ctx.remove_item(item_id, count)
+        self._ctx.modify_player_stat("money", total)
+        self._log_add_stat("player", "money", total)
+        self._log_add_item(item_id, -count)
+        self._bus.emit("on_inventory_changed")
+        self._push_status()
+        return True
+
     def _data_get_inventory(self) -> Dict[str, int]:
         return self._ctx.get_inventory().to_dict()
 
     def _data_add_item(self, item_id: str, count: int = 1) -> bool:
         ok = self._ctx.add_item(str(item_id), int(count))
         if ok:
+            self._log_add_item(str(item_id), int(count))
             self._push_status()
         return ok
 
     def _data_remove_item(self, item_id: str, count: int = 1) -> bool:
         ok = self._ctx.remove_item(str(item_id), int(count))
         if ok:
+            self._log_add_item(str(item_id), -int(count))
             self._push_status()
         return ok
 

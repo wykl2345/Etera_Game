@@ -159,6 +159,15 @@ class CharacterState:
     flags: FlagStore = field(default_factory=lambda: FlagStore("character"))
     relation: int = 0
     location: str = ""
+    # 关系阶段：由"突破事件"显式设置，不随好感度自动变化。
+    # 空字符串表示尚未设置（此时按好感度推算展示值，向后兼容）。
+    stage: str = ""
+    # 自定义能力/属性（剧本可注册，键 → 值）
+    extra: Dict[str, Any] = field(default_factory=dict)
+    # 自定义能力的中文显示名（键 → 名称）
+    extra_labels: Dict[str, str] = field(default_factory=dict)
+    # 互动历史：[{day, title, changes}]，最近的在前
+    history: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -167,6 +176,10 @@ class CharacterState:
             "stats": self.stats.to_dict(),
             "flags": self.flags.to_dict(),
             "relation": self.relation, "location": self.location,
+            "stage": self.stage,
+            "extra": dict(self.extra),
+            "extra_labels": dict(self.extra_labels),
+            "history": list(self.history),
         }
 
     @classmethod
@@ -181,6 +194,11 @@ class CharacterState:
             flags=FlagStore.from_dict("character", data.get("flags", {})),
             relation=int(data.get("relation", 0)),
             location=data.get("location", ""),
+            # 老存档没有这些字段 → 默认空，向后兼容
+            stage=data.get("stage", ""),
+            extra=dict(data.get("extra", {})),
+            extra_labels=dict(data.get("extra_labels", {})),
+            history=list(data.get("history", [])),
         )
 
 
@@ -346,6 +364,55 @@ class GameContext:
                 return 0
             ch.relation = max(-100, min(100, ch.relation + int(delta)))
             return ch.relation
+
+    # ── 关系阶段（独立于好感度：只由突破事件改变）────────────────
+    def get_character_stage(self, char_id: str) -> str:
+        """返回显式设置的阶段；未设置时返回空串（由展示层按好感度推算）。"""
+        with self._lock:
+            ch = self._characters.get(char_id)
+            return ch.stage if ch else ""
+
+    def set_character_stage(self, char_id: str, stage: str) -> bool:
+        with self._lock:
+            ch = self._characters.get(char_id)
+            if ch is None:
+                return False
+            ch.stage = str(stage)
+            return True
+
+    # ── 自定义能力 ────────────────────────────────────────────────
+    def get_character_extra(self, char_id: str, key: str, default: Any = None) -> Any:
+        with self._lock:
+            ch = self._characters.get(char_id)
+            return ch.extra.get(key, default) if ch else default
+
+    def set_character_extra(self, char_id: str, key: str, value: Any) -> bool:
+        with self._lock:
+            ch = self._characters.get(char_id)
+            if ch is None:
+                return False
+            ch.extra[key] = value
+            return True
+
+    def define_character_extra(self, char_id: str, key: str, label: str, initial: Any = 0) -> bool:
+        """注册一个自定义能力（带中文名与初始值）；重复注册不覆盖已有值。"""
+        with self._lock:
+            ch = self._characters.get(char_id)
+            if ch is None:
+                return False
+            ch.extra_labels[key] = str(label)
+            ch.extra.setdefault(key, initial)
+            return True
+
+    # ── 互动历史 ──────────────────────────────────────────────────
+    def add_character_history(self, char_id: str, entry: Dict[str, Any], limit: int = 20) -> bool:
+        with self._lock:
+            ch = self._characters.get(char_id)
+            if ch is None:
+                return False
+            ch.history.insert(0, dict(entry))
+            del ch.history[limit:]
+            return True
 
     def get_character_flag(self, char_id: str, key: str, default: Any = None) -> Any:
         with self._lock:

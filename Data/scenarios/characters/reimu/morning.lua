@@ -9,6 +9,7 @@ return {
     priority = "high",
 
     execute = function()
+        data.log_start("reimu", "清晨叫醒")
         local day = world.get_day()
         if day < 2 then
             return
@@ -41,5 +42,6 @@ return {
         end
 
         ui.hide_character("reimu")
+        data.log_commit()
     end
 }

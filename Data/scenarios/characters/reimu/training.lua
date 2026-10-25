@@ -13,6 +13,7 @@ return {
     },
 
     execute = function()
+        data.log_start("reimu", "一起修行")
         ui.set_background("shrine", "fade")
         ui.show_character("reimu", "serious", "center")
         ui.text("灵梦：修行啊……行，正好我也活动活动。", "pink")
@@ -31,5 +32,6 @@ return {
         end
 
         ui.hide_character("reimu")
+        data.log_commit()
     end
 }

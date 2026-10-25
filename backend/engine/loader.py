@@ -38,6 +38,8 @@ class HubButton:
     source: str = ""
     require_flag: Optional[str] = None
     require_relation: Optional[int] = None
+    # 该 flag 为真时按钮直接隐藏（一次性剧情用：做完就不再显示入口）
+    hide_flag: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -47,6 +49,7 @@ class HubButton:
             "order": self.order,
             "require_flag": self.require_flag,
             "require_relation": self.require_relation,
+            "hide_flag": self.hide_flag,
         }
 
 
@@ -166,6 +169,7 @@ class ScenarioLoader:
         except (TypeError, ValueError):
             order = 100
 
+        hide_flag = self._hub_get(hub, "hide_flag")
         require_flag = self._hub_get(hub, "require_flag")
         require_relation = self._hub_get(hub, "require_relation")
         try:
@@ -183,6 +187,7 @@ class ScenarioLoader:
             source=rel,
             require_flag=str(require_flag) if require_flag else None,
             require_relation=require_relation,
+            hide_flag=str(hide_flag) if hide_flag else None,
         )
 
     def list_scripts(self) -> List[str]:

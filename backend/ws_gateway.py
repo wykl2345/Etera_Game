@@ -96,6 +96,12 @@ def _hub_payload(bundle: Any) -> Dict[str, Any]:
 
     items = []
     for btn in buttons:
+        # 一次性剧情：完成后整个入口隐藏
+        hide_flag = getattr(btn, "hide_flag", None)
+        if hide_flag:
+            hns, _, hkey = str(hide_flag).partition(".")
+            if bundle.ctx.get_global_flag(hns, hkey, False):
+                continue
         available, reason = True, None
         if btn.require_relation is not None:
             if bundle.ctx.get_character_relation(btn.char) < btn.require_relation:
@@ -136,19 +142,38 @@ def _relation_stage(relation: int) -> Dict[str, str]:
 
 
 def _characters_payload(bundle: Any) -> Dict[str, Any]:
-    """角色一览 / 详情共用的数据（角色数量少，一次给全前端算排序）。"""
+    """角色一览 / 详情共用的数据（角色数量少，一次给全前端算排序）。
+
+    关系阶段：剧本用 data.set_stage 显式设置过就以它为准（突破事件推进），
+    否则回退到按好感度推算，兼容还没做突破事件的角色。
+    """
     items = []
     for cid, ch in bundle.ctx.get_all_characters().items():
+        auto_stage = _relation_stage(ch.relation)
+        stage = ch.stage or auto_stage["key"]
+        stage_label = next(
+            (label for _lo, _hi, label, key in _RELATION_STAGES if key == stage),
+            auto_stage["label"],
+        )
         items.append({
             "char_id": cid,
             "name": ch.name,
             "title": ch.title,
             "tags": list(ch.tags),
             "relation": ch.relation,
-            "relation_stage": _relation_stage(ch.relation),
+            "relation_stage": {
+                "key": stage,
+                "label": stage_label,
+                # 是否由突破事件显式设定（前端可据此显示"已突破"）
+                "explicit": bool(ch.stage),
+                "auto_label": auto_stage["label"],
+            },
             "location": ch.location,
             "stats": ch.stats.to_dict(),
             "flags": ch.flags.to_dict(),
+            "extra": dict(ch.extra),
+            "extra_labels": dict(ch.extra_labels),
+            "history": list(ch.history),
         })
     return {"characters": items}
 

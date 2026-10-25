@@ -1,6 +1,6 @@
 ================================================================================
             Etera_Game Lua DSL 指令参考手册
-            引擎版本: 2.0.0  最后更新: 2026-08-19
+            引擎版本: 2.1.0  最后更新: 2026-08-19（共 53 条指令）
 ================================================================================
 
 本文档列出了Lua事件脚本中可用的全部API指令。与 Python api_bridge.py 一一对应，
@@ -201,6 +201,71 @@ data.modify_stat(target, stat, delta)
         data.modify_stat("player", "money", -30)    -- 花钱 30（不是"设为 -30"！）
         data.modify_stat("player", "exp", 10)       -- 加经验
     注意：set_stat 是**设绝对值**，别拿它当增量用（会把原值覆盖掉）。
+
+data.get_stage(target)
+    读取角色当前关系阶段。返回阶段 key：
+    hostile / distant / neutral / friendly / close / love / soulmate
+    未设置过（角色还没触发突破事件）时返回空字符串 ""。
+    注意：关系阶段**不随好感度自动变化**，只由突破事件用 set_stage 推进。
+    返回 : string
+    示例：
+        if data.get_stage("reimu") == "friendly" then ... end
+
+data.set_stage(target, stage)
+    设置关系阶段 —— **关系突破事件专用**。好感度满了也只会涨数值，
+    阶段必须靠事件推进（这样玩家能自由刷好感，但关系进展由剧情把关）。
+    target : string  角色ID
+    stage  : string  阶段 key（同上 7 档）
+    返回   : bool
+    示例：
+        data.set_stage("reimu", "close")
+        ui.text("（与灵梦的关系：亲密）", "yellow")
+
+data.log_start(target, title)
+    开始记录一次互动。之后本剧本里的 modify_relation / modify_stat /
+    add_item / remove_item / buy_item / sell_item 会自动累积成一句话。
+    target : string  角色ID
+    title  : string  事件简略名（如 "清晨叫醒"）
+    返回   : bool
+
+data.log_commit()
+    提交记录 → 角色互动历史里多一条，形如：
+        [清晨叫醒 --> 好感度+5，金钱-30，获得团子×2]
+    未调用 log_start 时返回 false。
+    返回   : bool
+    示例：
+        data.log_start("reimu", "清晨叫醒")
+        data.modify_relation("reimu", 5)
+        data.log_commit()
+
+data.define_stat(target, key, label, initial?)
+    注册一个**自定义能力/属性**（超出 hp/mp/体力/金钱 等基础属性的部分）。
+    target  : string  角色ID
+    key     : string  键（如 "sword"）
+    label   : string  中文显示名（如 "剑术"）
+    initial : any?    初始值，默认 0；重复注册不会覆盖已有值
+    返回    : bool
+
+data.get_extra(target, key, default?)
+    读自定义能力。 返回 : any
+data.set_extra(target, key, value)
+    写自定义能力（绝对值）。 返回 : bool
+data.modify_extra(target, key, delta)
+    按增量改自定义能力，返回新值（未注册时以 0 为基准）。 返回 : any
+    示例：
+        data.define_stat("reimu", "sword", "剑术", 0)
+        data.modify_extra("reimu", "sword", 3)      -- 剑术 0 → 3
+
+data.buy_item(item_id, price, count?)
+    购买：总额 = price × count。钱不够则失败（不扣款、不给货）。
+    返回 : bool   是否成功
+
+data.sell_item(item_id, price, count?)
+    出售：持有不足则失败（不移除、不加钱）。
+    返回 : bool   是否成功
+    示例：
+        if data.buy_item("煎茶", 30) then ... end
+        data.sell_item("发光蘑菇", 20, 2)          -- 卖 2 个，共 40 文
 
 data.get_relation(target)
     获取角色好感度。
@@ -426,6 +491,16 @@ minigame.start(game_id, options?)
   ✓ data.get_stat(target, stat, default?) → number
   ✓ data.set_stat(target, stat, value) → bool
   ✓ data.modify_stat(target, stat, delta) → number
+  ✓ data.get_stage(target) → string
+  ✓ data.set_stage(target, stage) → bool
+  ✓ data.log_start(target, title) → bool
+  ✓ data.log_commit() → bool
+  ✓ data.define_stat(target, key, label, initial?) → bool
+  ✓ data.get_extra(target, key, default?) → any
+  ✓ data.set_extra(target, key, value) → bool
+  ✓ data.modify_extra(target, key, delta) → any
+  ✓ data.buy_item(item_id, price, count?) → bool
+  ✓ data.sell_item(item_id, price, count?) → bool
   ✓ data.get_relation(target) → number
   ✓ data.set_relation(target, value) → bool
   ✓ data.modify_relation(target, delta) → number

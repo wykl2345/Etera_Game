@@ -10,7 +10,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 
 1. **前后端分离**：浏览器负责渲染与排版，引擎专注游戏逻辑
 2. **节约 UI 成本 + 现代化**：系统界面（主菜单/设置/存档等）彻底 Web 化重设计
-3. **内容资产零迁移**：v1 的 40 个 Lua 指令（DSL.txt）语义不变（v2 新增 `minigame.start`/`data.modify_stat`/`data.list_characters` 后合计 43 个），Mod 生态不受影响
+3. **内容资产零迁移**：v1 的 40 个 Lua 指令（DSL.txt）语义不变（v2 新增 `minigame.start`/`data.modify_stat`/`data.list_characters` 后合计 53 个），Mod 生态不受影响
 
 ---
 
@@ -31,7 +31,7 @@ v1 为 Python + PySide6 桌面应用：引擎核心（Lua 沙箱、事件总线�
 | # | 约束 | 等级 |
 |---|---|---|
 | NFR-1 | **上下文友好**：代码与文档保持轻量，避免大文件 | 软 |
-| NFR-2 | **Mod 兼容**：v1 的 40 个 Lua 指令语义完全不变（v2 仅新增 `minigame.start`/`modify_stat`/`list_characters`，合计 43 个，无破坏性变更） | **硬** |
+| NFR-2 | **Mod 兼容**：v1 的 40 个 Lua 指令语义完全不变（v2 仅新增 `minigame.start`/`modify_stat`/`list_characters`，合计 53 个，无破坏性变更） | **硬** |
 | NFR-3 | **协议一致性**：WS 消息结构有单一事实来源（TS 类型 + Python 侧校验），防两端漂移 | **硬** |
 | NFR-4 | **性能**：文本冒险 UI 无感知延迟；小游戏 Canvas 独立渲染（60fps） | 软 |
 | NFR-5 | **可测试性**：引擎核心无 GUI 依赖，全部可单测 | 软 |

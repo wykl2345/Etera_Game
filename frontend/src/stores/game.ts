@@ -85,10 +85,16 @@ export interface CharacterInfo {
   title: string
   tags: string[]
   relation: number
-  relation_stage: { label: string; key: string }
+  /** 关系阶段：explicit=true 表示由突破事件设定，否则按好感度自动推算 */
+  relation_stage: { label: string; key: string; explicit: boolean; auto_label: string }
   location: string
   stats: Record<string, number>
   flags: Record<string, unknown>
+  /** 自定义能力（剧本 data.define_stat 注册） */
+  extra: Record<string, unknown>
+  extra_labels: Record<string, string>
+  /** 互动历史，最近的在前 */
+  history: { day: number; title: string; changes: string }[]
 }
 
 /** 角色一览排序方式 */
