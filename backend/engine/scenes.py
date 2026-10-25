@@ -36,7 +36,11 @@ class SceneRegistry:
 
     def load(self) -> int:
         if not self.config_path.exists():
-            logger.warning("场景配置不存在: %s（移动/睡觉功能不可用）", self.config_path)
+            logger.error(
+                "场景配置不存在: %s —— 移动列表将为空（睡觉降级为不限制）。"
+                "请检查 Data/config/scenes.yaml 是否随项目一起部署。",
+                self.config_path.resolve(),
+            )
             return 0
         try:
             import yaml
@@ -89,6 +93,9 @@ class SceneRegistry:
         return [self._scenes[s] for s in scene.adjacent if s in self._scenes]
 
     def can_sleep(self, scene_id: str) -> bool:
+        # 场景表没加载成功时降级为"不限制"，避免睡觉功能被配置问题锁死
+        if not self._scenes:
+            return True
         scene = self._scenes.get(scene_id)
         return bool(scene and scene.can_sleep)
 

@@ -154,6 +154,36 @@ def test_abort_frees_game_thread():
     asyncio.run(_run())
 
 
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_scene_registry_loads_from_data_dir(tmp_path, monkeypatch):
+    """场景表必须能加载（回归：早期用相对路径 Data/config/scenes.yaml，
+    生产工作目录是 backend/ → 找不到 → 移动列表为空、睡觉全灰）。"""
+    from engine.bootstrap import init_engine
+    from engine.script_runner import UIOutput
+
+    class _O(UIOutput):
+        def send(self, msg):
+            pass
+
+    # 模拟生产：把工作目录切到 backend/，仍应通过绝对路径正确加载
+    backend_dir = Path(__file__).resolve().parent.parent
+    monkeypatch.chdir(backend_dir)
+
+    b = init_engine(
+        _O(),
+        scripts_dir=str(SCRIPTS_DIR),
+        characters_dir=str(CHARACTERS_DIR),
+        saves_dir=str(tmp_path),
+    )
+    assert len(b.scenes.all_ids()) >= 4, "场景表未加载"
+    assert "home" in b.scenes.all_ids()
+
+    # 玩家初始在 home，应该能走到相邻场景且可以睡觉
+    assert b.ctx.get_location() == "home"
+    assert [s.id for s in b.scenes.neighbors("home")], "相邻场景不应为空"
+    assert b.scenes.can_sleep("home") is True
+
+
 class TestRelationStage:
     """关系阶段换算（与 v1 设计文档的 7 阶段一致）。"""
 

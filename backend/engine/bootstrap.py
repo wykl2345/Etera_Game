@@ -67,7 +67,7 @@ def init_engine(
     characters_dir: Any = "data/characters",
     saves_dir: Any = "saves",
     debug_mode: bool = False,
-    scenes_config: Any = "Data/config/scenes.yaml",
+    scenes_config: Any = None,
 ) -> EngineBundle:
     """构建完整引擎（不含 WS/网络，output 由调用方注入）。"""
     bus = EventBus()
@@ -88,6 +88,11 @@ def init_engine(
     from engine.save_manager import SaveManager
 
     save_manager = SaveManager(bus, ctx, base_dir=Path(saves_dir))
+
+    # 场景配置默认跟随 characters_dir 推导（scripts/characters 都是绝对路径，
+    # 不能依赖当前工作目录 —— 生产里工作目录是 backend/）。
+    if scenes_config is None:
+        scenes_config = Path(characters_dir).parent / "config" / "scenes.yaml"
 
     return EngineBundle(
         bus=bus, ctx=ctx, sandbox=sandbox,
