@@ -10,6 +10,8 @@ return {
         label = "一起修行",
         order = 20,
         require_relation = 10,
+        stamina_cost = 20,
+        daily_limit = 1,
     },
 
     execute = function()

@@ -36,9 +36,22 @@ priority 可选值：low / normal / high / critical（默认 normal）。
             char = "reimu",            -- 归属角色 ID（显示在该角色卡片下）
             label = "聊聊",             -- 按钮文案
             order = 10,                -- 同角色内排序（小在前，默认 100）
-            require_relation = 10,     -- 可选：该角色好感 < N 时按钮锁定
-            require_flag = "story.intro_completed",  -- 可选："ns.key" 形式
+
+            -- 【条件类：不满足就隐藏按钮】
+            require_relation = 10,     -- 该角色好感 < N 时隐藏
+            require_flag = "story.intro_completed",  -- "ns.key" 为假时隐藏
+            hide_flag = "reimu.story_01_done",       -- 该 flag 为真时隐藏（一次性剧情）
+
+            -- 【成本类：满足门槛但暂时做不了 → 按钮变灰并显示原因】
+            stamina_cost = 20,         -- 消耗体力；不足则变灰，执行后由引擎扣除
+            daily_limit = 1,           -- 每天次数上限；用完变灰，跨天自动重置
         },
+
+    两条判定规则（重要）：
+      · 条件不满足（好感/flag/角色不在本场景）→ **按钮不显示**
+      · 暂时不可用（体力不足/今日次数用完）→ **按钮变灰**并给出原因
+
+    角色按钮只在该角色与玩家**同场景**时出现（见 scenes.yaml）。
         execute = function() ... end
     }
 
@@ -51,6 +64,24 @@ priority 可选值：low / normal / high / critical（默认 normal）。
       ├── dialogue.lua     on_event = "dialogue:reimu"       hub: 聊聊
       ├── training.lua     on_event = "action:reimu_training" hub: 一起修行（需好感10）
       └── morning.lua      on_event = "on_day_begin"         无 hub（自动触发）
+
+--------------------------------------------------------------------------------
+一.6、场景（Scene）
+--------------------------------------------------------------------------------
+
+场景定义在 Data/config/scenes.yaml：
+
+    scenes:
+      home:
+        name: 自宅
+        desc: 你在人间之里的小屋。
+        adjacent: [hakurei_shrine, village]   -- 可直达的相邻场景（引擎自动补双向）
+        sleep: true                          -- 可在此睡觉（恢复体力 + 推进一天）
+
+- 玩家的当前位置就是 world.get_location()，剧本可用 world.set_location 改
+- Hub 只显示**与玩家同场景**的角色（角色的 location 字段）
+- Hub 的「移动」只能去相邻场景；「睡觉」只在 sleep: true 的场景可用
+- 角色的初始位置在角色 YAML 的 base_location
 
 系统预定义事件名（参考 event_bus.py EventConstants）：
     on_game_start              游戏启动时

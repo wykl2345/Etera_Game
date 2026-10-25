@@ -9,6 +9,7 @@ return {
         char = "reimu",
         label = "带点东西去",
         order = 25,
+        daily_limit = 1,
     },
 
     execute = function()

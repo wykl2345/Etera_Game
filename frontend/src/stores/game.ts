@@ -76,6 +76,21 @@ export interface HubButton {
   order: number
   available: boolean
   reason: string | null
+  /** 消耗体力（0 = 不耗） */
+  stamina_cost: number
+  /** 每日次数上限（0 = 不限） */
+  daily_limit: number
+  /** 今天已用次数（无上限时为 null） */
+  used_today: number | null
+}
+
+/** 场景（Hub 当前地点） */
+export interface HubScene {
+  id: string
+  name: string
+  desc: string
+  can_sleep: boolean
+  adjacent: { id: string; name: string; desc: string; can_sleep: boolean }[]
 }
 
 /** 角色一览/详情数据（后端 characters.list） */
@@ -152,6 +167,8 @@ interface GameState {
   charSort: CharSort
   /** 正在查看详情的角色 ID（null = 未打开详情） */
   detailChar: string | null
+  /** Hub 当前场景 */
+  hubScene: HubScene | null
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -184,6 +201,7 @@ export const useGameStore = defineStore('game', {
     charactersList: [],
     charSort: 'relation',
     detailChar: null,
+    hubScene: null,
   }),
 
   getters: {
@@ -351,6 +369,29 @@ export const useGameStore = defineStore('game', {
           this.showToast(p.reason ?? '读档失败')
         }
       })
+      // 移动结果
+      wsClient.on('move.result', (m) => {
+        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null; name?: string }
+        if (p.ok) {
+          this.showToast(`来到 ${p.name ?? ''}`)
+          this.hubSelectedChar = null
+        } else {
+          this.showToast(p.reason ?? '无法移动')
+        }
+      })
+
+      // 睡觉结果
+      wsClient.on('sleep.result', (m) => {
+        const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null }
+        if (p.ok) {
+          this.showToast('睡了一觉，体力恢复了')
+          this.hubSelectedChar = null
+          this.textFlow = []
+        } else {
+          this.showToast(p.reason ?? '睡不着')
+        }
+      })
+
       // 推进一天的结果
       wsClient.on('day.result', (m) => {
         const p = (m.payload ?? {}) as { ok?: boolean; reason?: string | null }
@@ -370,9 +411,11 @@ export const useGameStore = defineStore('game', {
       // Hub 数据：角色卡片 + 剧本注册的行动按钮
       wsClient.on('hub.buttons', (m) => {
         const p = (m.payload ?? {}) as {
+          scene?: HubScene
           characters?: HubCharacter[]
           buttons?: HubButton[]
         }
+        this.hubScene = p.scene ?? null
         this.hubCharacters = p.characters ?? []
         this.hubButtons = p.buttons ?? []
         // 选中角色若已不在列表里则清空
@@ -529,6 +572,20 @@ export const useGameStore = defineStore('game', {
     closeMenu(): void {
       // 关悬浮面板，回到原界面（uiMode 从未改变）
       this.panel = null
+    },
+
+    /** 移动到相邻场景 */
+    moveTo(sceneId: string): void {
+      wsClient.send({ type: 'game.move', payload: { scene: sceneId } })
+    },
+
+    /** 睡觉：恢复体力并推进一天（仅当前场景允许时可用） */
+    doSleep(): void {
+      if (!this.hubScene?.can_sleep) {
+        this.showToast('这里睡不着')
+        return
+      }
+      wsClient.send({ type: 'game.sleep' })
     },
 
     /** 进入 Hub（行动枢纽）：清空叙事区、拉取按钮列表 */

@@ -10,6 +10,7 @@ return {
         char = "reimu",
         label = "聊聊",
         order = 10,
+        daily_limit = 3,
     },
 
     execute = function()

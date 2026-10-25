@@ -15,6 +15,7 @@ from engine.character_model import CharacterModel
 from engine.event_bus import EventBus
 from engine.game_context import GameContext, StatBlock
 from engine.loader import ScenarioLoader
+from engine.scenes import SceneRegistry
 from engine.sandbox import LuaSandbox
 from engine.script_runner import ScriptScheduler, UIOutput
 
@@ -32,6 +33,7 @@ class EngineBundle:
     character_model: CharacterModel
     save_manager: Any = None
     hub_buttons: Any = None
+    scenes: Any = None
 
 
 def _apply_characters(ctx: GameContext, cm: CharacterModel) -> None:
@@ -65,6 +67,7 @@ def init_engine(
     characters_dir: Any = "data/characters",
     saves_dir: Any = "saves",
     debug_mode: bool = False,
+    scenes_config: Any = "Data/config/scenes.yaml",
 ) -> EngineBundle:
     """构建完整引擎（不含 WS/网络，output 由调用方注入）。"""
     bus = EventBus()
@@ -91,4 +94,5 @@ def init_engine(
         scheduler=scheduler, api=api, output=output,
         character_model=cm, save_manager=save_manager,
         hub_buttons=loader.hub_buttons,
+        scenes=SceneRegistry(Path(scenes_config)),
     )

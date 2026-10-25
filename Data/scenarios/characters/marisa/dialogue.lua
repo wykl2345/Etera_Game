@@ -8,6 +8,7 @@ return {
         char = "marisa",
         label = "聊聊",
         order = 10,
+        daily_limit = 3,
     },
 
     execute = function()

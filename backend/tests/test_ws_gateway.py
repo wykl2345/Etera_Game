@@ -221,30 +221,92 @@ class TestHubPayload:
         )
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
-    def test_payload_marks_locked_button(self, tmp_path):
+    def test_payload_hides_condition_unmet(self, tmp_path):
+        """条件不满足（好感门槛/前置剧情）→ 按钮直接隐藏，不是变灰。"""
         from ws_gateway import _hub_payload
 
         b = self._bundle(tmp_path)
+        b.ctx.set_location("hakurei_shrine")          # 与灵梦同场景
         b.ctx.set_character_relation("reimu", 0)      # < 门槛 10
         payload = _hub_payload(b)
 
         chars = {c["char_id"] for c in payload["characters"]}
-        assert {"reimu", "marisa"} <= chars
+        assert "reimu" in chars, "同场景角色应出现在卡片里"
+        assert "marisa" not in chars, "不同场景的角色不该出现"
 
-        training = [x for x in payload["buttons"] if x["label"] == "一起修行"][0]
-        assert training["available"] is False
-        assert "好感" in (training["reason"] or "")
+        events = [x["event"] for x in payload["buttons"]]
+        assert "action:reimu_training" not in events, "好感不足应隐藏"
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_payload_unlocks_when_relation_enough(self, tmp_path):
         from ws_gateway import _hub_payload
 
         b = self._bundle(tmp_path)
+        b.ctx.set_location("hakurei_shrine")
         b.ctx.set_character_relation("reimu", 20)     # ≥ 门槛 10
         payload = _hub_payload(b)
         training = [x for x in payload["buttons"] if x["label"] == "一起修行"][0]
         assert training["available"] is True
         assert training["reason"] is None
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_payload_greys_out_on_low_stamina(self, tmp_path):
+        """体力不足 → 按钮保留但变灰（不是隐藏）。"""
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_location("hakurei_shrine")
+        b.ctx.set_character_relation("reimu", 20)
+        b.ctx.set_player_stat("stamina", 5)           # < 修行消耗 20
+        payload = _hub_payload(b)
+        training = [x for x in payload["buttons"] if x["event"] == "action:reimu_training"][0]
+        assert training["available"] is False
+        assert "体力" in (training["reason"] or "")
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_payload_greys_out_on_daily_limit(self, tmp_path):
+        """当天次数用完 → 变灰（不隐藏），跨天恢复。"""
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_location("hakurei_shrine")
+        b.ctx.set_day(3)
+        # 直接写当天计数，模拟已用 3 次（聊聊上限 3）
+        b.ctx.set_global_flag("_action", "dialogue:reimu:3", 3)
+        payload = _hub_payload(b)
+        dlg = [x for x in payload["buttons"] if x["event"] == "dialogue:reimu"][0]
+        assert dlg["available"] is False
+        assert "3/3" in (dlg["reason"] or "")
+
+        # 换一天 → 计数按天隔离，自动恢复可用
+        b.ctx.set_day(4)
+        payload2 = _hub_payload(b)
+        dlg2 = [x for x in payload2["buttons"] if x["event"] == "dialogue:reimu"][0]
+        assert dlg2["available"] is True
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_scene_filters_characters(self, tmp_path):
+        """Hub 只显示与玩家同场景的角色。"""
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_location("magic_forest")            # 魔理沙所在地
+        payload = _hub_payload(b)
+        chars = {c["char_id"] for c in payload["characters"]}
+        assert "marisa" in chars
+        assert "reimu" not in chars
+
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_scene_info_has_neighbors_and_sleep(self, tmp_path):
+        """Hub 返回当前场景的名称/描述/相邻地点/能否睡觉。"""
+        from ws_gateway import _hub_payload
+
+        b = self._bundle(tmp_path)
+        b.ctx.set_location("home")
+        scene = _hub_payload(b)["scene"]
+        assert scene["name"] == "自宅"
+        assert scene["can_sleep"] is True
+        assert {s["id"] for s in scene["adjacent"]} >= {"hakurei_shrine", "village"}
 
     @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
     def test_payload_buttons_have_event_and_order(self, tmp_path):

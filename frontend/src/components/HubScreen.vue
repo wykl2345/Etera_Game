@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 import StatusBar from './StatusBar.vue'
 
 const store = useGameStore()
-const { hubCharacters, hubCharButtons, hubSelectedChar, toast } = storeToRefs(store)
+const { hubCharacters, hubCharButtons, hubSelectedChar, hubScene, toast } = storeToRefs(store)
+
+/** 是否展开"移动"面板 */
+const moveOpen = ref(false)
 
 const selectedName = computed(
   () => hubCharacters.value.find((c) => c.char_id === hubSelectedChar.value)?.name ?? '',
 )
+
+/** 按钮上的消耗标注：⚡20 / 1/3 */
+function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: number | null }): string {
+  const parts: string[] = []
+  if (b.daily_limit > 0) parts.push(`${b.used_today ?? 0}/${b.daily_limit}`)
+  if (b.stamina_cost > 0) parts.push(`⚡${b.stamina_cost}`)
+  return parts.join(' ')
+}
 </script>
 
 <template>
@@ -17,12 +28,13 @@ const selectedName = computed(
     <StatusBar />
 
     <div class="hub-body">
+      <!-- 当前场景 -->
       <header class="hub-head">
-        <h2>今天要做什么？</h2>
-        <p class="hint">选择一个角色，看看能和他/她做什么</p>
+        <h2>{{ hubScene?.name ?? '未知地点' }}</h2>
+        <p v-if="hubScene?.desc" class="hint">{{ hubScene.desc }}</p>
       </header>
 
-      <!-- 角色卡片：点选后显示该角色注册的行动按钮 -->
+      <!-- 本场景可交互的角色 -->
       <section class="chars">
         <button
           v-for="c in hubCharacters"
@@ -34,10 +46,10 @@ const selectedName = computed(
           <span class="char-name">{{ c.name }}</span>
           <span class="char-rel">好感 {{ c.relation }}</span>
         </button>
-        <p v-if="!hubCharacters.length" class="empty">（没有可互动的角色）</p>
+        <p v-if="!hubCharacters.length" class="empty">（这里没有可以互动的人）</p>
       </section>
 
-      <!-- 选中角色的行动按钮（由剧本 hub 声明注册，可带数值条件） -->
+      <!-- 选中角色的行动 -->
       <section v-if="hubSelectedChar" class="actions">
         <div class="actions-title">{{ selectedName }} 的行动</div>
         <div class="actions-row">
@@ -50,21 +62,45 @@ const selectedName = computed(
             @click="store.chooseHubButton(b)"
           >
             {{ b.label }}
+            <span v-if="costLabel(b)" class="cost">{{ costLabel(b) }}</span>
             <span v-if="!b.available" class="lock">锁</span>
           </button>
           <p v-if="!hubCharButtons.length" class="empty">（该角色暂无可用行动）</p>
         </div>
       </section>
 
-      <!-- 主角特殊功能栏（非行动栏）：主角自身的功能入口 -->
+      <!-- 主角特殊功能栏 -->
       <section class="hero-bar">
         <span class="bar-label">主角</span>
+        <button class="hero-btn" @click="moveOpen = !moveOpen">
+          移动{{ moveOpen ? ' ▲' : ' ▼' }}
+        </button>
+        <button
+          class="hero-btn"
+          :disabled="!hubScene?.can_sleep"
+          :title="hubScene?.can_sleep ? '睡一觉：恢复体力并进入下一天' : '这里睡不着（需要在有床的地方）'"
+          @click="store.doSleep()"
+        >睡觉</button>
         <button class="hero-btn" @click="store.openCharacters()">信息确认</button>
       </section>
 
-      <!-- 游戏本身的功能按钮 -->
+      <!-- 移动面板 -->
+      <section v-if="moveOpen" class="move-panel">
+        <div class="actions-title">可前往</div>
+        <div class="actions-row">
+          <button
+            v-for="s in (hubScene?.adjacent ?? [])"
+            :key="s.id"
+            class="action-btn"
+            :title="s.desc"
+            @click="store.moveTo(s.id)"
+          >{{ s.name }}</button>
+          <p v-if="!hubScene?.adjacent?.length" class="empty">（无处可去）</p>
+        </div>
+      </section>
+
+      <!-- 游戏功能按钮 -->
       <section class="system">
-        <button class="sys-btn primary" @click="store.advanceDay()">下一天</button>
         <button class="sys-btn" @click="store.openSave()">保存</button>
         <button class="sys-btn" @click="store.openLoad()">读取</button>
         <button class="sys-btn" @click="store.openSettings()">设置</button>
@@ -92,12 +128,11 @@ const selectedName = computed(
 .hub-body {
   flex: 1;
   overflow-y: auto;
-  /* 顶部让出 52px：StatusBar 是 position:absolute，不占文档流，
-     否则「今天要做什么」会被状态栏压住 */
+  /* 顶部让出 52px：StatusBar 是 position:absolute，不占文档流 */
   padding: 68px 32px 40px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 22px;
 }
 
 .hub-head h2 {
@@ -110,11 +145,11 @@ const selectedName = computed(
 .hint {
   margin: 0;
   font-size: 12px;
+  line-height: 1.7;
   color: var(--fg-dim);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
-/* ── 角色卡片 ── */
 .chars {
   display: flex;
   flex-wrap: wrap;
@@ -154,8 +189,8 @@ const selectedName = computed(
   color: var(--fg-dim);
 }
 
-/* ── 角色行动 ── */
-.actions {
+.actions,
+.move-panel {
   padding: 16px 18px;
   background: #101419;
   border: 1px solid var(--border);
@@ -174,7 +209,7 @@ const selectedName = computed(
   align-items: center;
 }
 .action-btn {
-  padding: 9px 18px;
+  padding: 9px 16px;
   font-size: 13px;
   letter-spacing: 0.06em;
   color: var(--fg);
@@ -184,6 +219,9 @@ const selectedName = computed(
   cursor: pointer;
   font-family: var(--font-mono);
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 .action-btn:hover:not(:disabled) {
   border-color: var(--accent);
@@ -193,17 +231,22 @@ const selectedName = computed(
   opacity: 0.4;
   cursor: not-allowed;
 }
+.cost {
+  font-size: 10px;
+  color: var(--fg-dim);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #232a33;
+}
 .lock {
-  margin-left: 6px;
   font-size: 10px;
   color: var(--fg-dim);
 }
 
-/* ── 主角特殊功能栏 ── */
 .hero-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 12px 16px;
   background: #101419;
   border: 1px solid var(--border);
@@ -229,12 +272,15 @@ const selectedName = computed(
   font-family: var(--font-mono);
   transition: all 0.15s ease;
 }
-.hero-btn:hover {
+.hero-btn:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
 }
+.hero-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
-/* ── 游戏级按钮 ── */
 .system {
   margin-top: auto;
   padding-top: 18px;
@@ -256,10 +302,6 @@ const selectedName = computed(
   transition: all 0.15s ease;
 }
 .sys-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.sys-btn.primary {
   color: var(--accent);
   border-color: var(--accent);
 }

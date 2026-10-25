@@ -1,0 +1,29 @@
+# 场景定义 —— 主角移动与世界地点
+#
+# 每个场景可声明：
+#   name      显示名
+#   adjacent  可直接移动过去的相邻场景（双向不必重复写，引擎双向处理）
+#   sleep     是否可在此睡觉（睡觉 = 恢复体力 + 推进一天）
+#   desc      场景描述（可选）
+
+scenes:
+  home:
+    name: 自宅
+    desc: 你在人间之里的小屋，陈设简单但还算舒适。
+    adjacent: [hakurei_shrine, village]
+    sleep: true
+
+  hakurei_shrine:
+    name: 博丽神社
+    desc: 山顶上的神社，香火冷清，但风景极好。
+    adjacent: [home, magic_forest]
+
+  magic_forest:
+    name: 魔法森林
+    desc: 雾气弥漫的森林，到处是奇怪的蘑菇。
+    adjacent: [hakurei_shrine, village]
+
+  village:
+    name: 人间之里
+    desc: 人类的聚落，市集热闹。
+    adjacent: [home, magic_forest]

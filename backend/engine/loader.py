@@ -40,6 +40,10 @@ class HubButton:
     require_relation: Optional[int] = None
     # 该 flag 为真时按钮直接隐藏（一次性剧情用：做完就不再显示入口）
     hide_flag: Optional[str] = None
+    # 消耗体力：不足则按钮变灰；执行后由引擎扣除（剧本不必再扣）
+    stamina_cost: int = 0
+    # 每天可用次数上限（0 = 不限）；用完变灰，跨天自动重置
+    daily_limit: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,6 +54,8 @@ class HubButton:
             "require_flag": self.require_flag,
             "require_relation": self.require_relation,
             "hide_flag": self.hide_flag,
+            "stamina_cost": self.stamina_cost,
+            "daily_limit": self.daily_limit,
         }
 
 
@@ -170,6 +176,16 @@ class ScenarioLoader:
             order = 100
 
         hide_flag = self._hub_get(hub, "hide_flag")
+
+        def _int_field(key: str) -> int:
+            raw = self._hub_get(hub, key, 0)
+            try:
+                return max(0, int(raw or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        stamina_cost = _int_field("stamina_cost")
+        daily_limit = _int_field("daily_limit")
         require_flag = self._hub_get(hub, "require_flag")
         require_relation = self._hub_get(hub, "require_relation")
         try:
@@ -188,6 +204,8 @@ class ScenarioLoader:
             require_flag=str(require_flag) if require_flag else None,
             require_relation=require_relation,
             hide_flag=str(hide_flag) if hide_flag else None,
+            stamina_cost=stamina_cost,
+            daily_limit=daily_limit,
         )
 
     def list_scripts(self) -> List[str]:

@@ -85,43 +85,6 @@ async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
             return
 
 
-def _hub_payload(bundle: Any) -> Dict[str, Any]:
-    """组装 Hub 数据：角色卡片 + 每个角色注册的行动按钮（带可用性判定）。"""
-    buttons = getattr(bundle, "hub_buttons", None) or []
-    chars = [
-        {"char_id": cid, "name": ch.name,
-         "relation": ch.relation, "location": ch.location}
-        for cid, ch in bundle.ctx.get_all_characters().items()
-    ]
-
-    items = []
-    for btn in buttons:
-        # 一次性剧情：完成后整个入口隐藏
-        hide_flag = getattr(btn, "hide_flag", None)
-        if hide_flag:
-            hns, _, hkey = str(hide_flag).partition(".")
-            if bundle.ctx.get_global_flag(hns, hkey, False):
-                continue
-        available, reason = True, None
-        if btn.require_relation is not None:
-            if bundle.ctx.get_character_relation(btn.char) < btn.require_relation:
-                available = False
-                reason = f"需要好感 {btn.require_relation}"
-        if btn.require_flag:
-            ns, _, key = str(btn.require_flag).partition(".")
-            if not bundle.ctx.get_global_flag(ns, key, False):
-                available = False
-                reason = reason or "尚未解锁"
-        d = btn.to_dict()
-        d["available"] = available
-        d["reason"] = reason
-        items.append(d)
-
-    items.sort(key=lambda b: (b["char"], b["order"]))
-    chars.sort(key=lambda c: c["char_id"])
-    return {"characters": chars, "buttons": items}
-
-
 # 关系阶段门槛（与 v1 设计文档一致：敌视 → 伴侣）
 _RELATION_STAGES = [
     (-100, -50, "敌视", "hostile"),
@@ -176,6 +139,95 @@ def _characters_payload(bundle: Any) -> Dict[str, Any]:
             "history": list(ch.history),
         })
     return {"characters": items}
+
+
+def _action_used(bundle: Any, action_key: str) -> int:
+    """当天某行动已用次数（键里带天数，跨天自动归零）。"""
+    day = bundle.ctx.get_day()
+    return int(bundle.ctx.get_global_flag("_action", f"{action_key}:{day}", 0))
+
+
+def _mark_action_used(bundle: Any, action_key: str) -> None:
+    day = bundle.ctx.get_day()
+    key = f"{action_key}:{day}"
+    cur = int(bundle.ctx.get_global_flag("_action", key, 0))
+    bundle.ctx.set_global_flag("_action", key, cur + 1)
+
+
+def _find_button(bundle: Any, event_name: str) -> Any:
+    for btn in getattr(bundle, "hub_buttons", None) or []:
+        if btn.event == event_name:
+            return btn
+    return None
+
+
+def _hub_payload(bundle: Any) -> Dict[str, Any]:
+    """Hub 数据：当前场景 + 该场景下的角色 + 可用行动按钮。
+
+    过滤规则（与玩家约定一致）：
+      - **条件不满足 → 隐藏**：好感门槛、前置 flag、hide_flag、角色不在本场景
+      - **暂时不可用 → 变灰**：体力不足、当天次数用完
+    """
+    scenes = getattr(bundle, "scenes", None)
+    scene_id = bundle.ctx.get_location()
+    scene = scenes.get(scene_id) if scenes else None
+    scene_info = {
+        "id": scene_id,
+        "name": scenes.name_of(scene_id) if scenes else (scene_id or "未知地点"),
+        "desc": scene.desc if scene else "",
+        "can_sleep": scenes.can_sleep(scene_id) if scenes else False,
+        "adjacent": [s.to_dict() for s in (scenes.neighbors(scene_id) if scenes else [])],
+    }
+
+    # 只显示与玩家同场景的角色
+    chars = [
+        {"char_id": cid, "name": ch.name, "relation": ch.relation,
+         "location": ch.location}
+        for cid, ch in bundle.ctx.get_all_characters().items()
+        if ch.location == scene_id
+    ]
+
+    stamina = bundle.ctx.get_player_stat("stamina", 0)
+    items = []
+    for btn in getattr(bundle, "hub_buttons", None) or []:
+        # ── 隐藏类条件 ──
+        hide_flag = getattr(btn, "hide_flag", None)
+        if hide_flag:
+            hns, _, hkey = str(hide_flag).partition(".")
+            if bundle.ctx.get_global_flag(hns, hkey, False):
+                continue
+        if btn.require_flag:
+            ns, _, key = str(btn.require_flag).partition(".")
+            if not bundle.ctx.get_global_flag(ns, key, False):
+                continue
+        if btn.require_relation is not None:
+            if bundle.ctx.get_character_relation(btn.char) < btn.require_relation:
+                continue
+        # 角色必须在当前场景
+        char_state = bundle.ctx.get_character(btn.char)
+        if char_state is None or char_state.location != scene_id:
+            continue
+
+        # ── 变灰类条件 ──
+        available, reason = True, None
+        daily_limit = getattr(btn, "daily_limit", 0) or 0
+        if daily_limit > 0:
+            used = _action_used(bundle, btn.event)
+            if used >= daily_limit:
+                available, reason = False, f"今天已用 {used}/{daily_limit} 次"
+        stamina_cost = getattr(btn, "stamina_cost", 0) or 0
+        if available and stamina_cost > 0 and stamina < stamina_cost:
+            available, reason = False, f"体力不足（需要 {stamina_cost}）"
+
+        d = btn.to_dict()
+        d["available"] = available
+        d["reason"] = reason
+        d["used_today"] = _action_used(bundle, btn.event) if daily_limit else None
+        items.append(d)
+
+    items.sort(key=lambda b: (b["char"], b["order"]))
+    chars.sort(key=lambda c: c["char_id"])
+    return {"scene": scene_info, "characters": chars, "buttons": items}
 
 
 def _send_characters(bundle: Any, output: UIOutput) -> None:
@@ -332,6 +384,14 @@ async def handle_connection(
                 output.send({"type": "event.result",
                              "payload": {"ok": False, "event": event_name, "reason": blocked}})
             else:
+                # Hub 行动：按声明扣体力 / 记次数（剧本不必自己再扣）
+                btn = _find_button(bundle, event_name)
+                if btn is not None:
+                    if getattr(btn, "stamina_cost", 0):
+                        bundle.ctx.modify_player_stat("stamina", -btn.stamina_cost)
+                        bundle.api._push_status()
+                    if getattr(btn, "daily_limit", 0):
+                        _mark_action_used(bundle, event_name)
                 recorder.begin()
 
                 def run_event() -> None:
@@ -410,6 +470,50 @@ async def handle_connection(
             # 记录上一个事件的对话（否则读档会莫名重放旧剧情）。
             recorder.begin()
             _send_hub(bundle, output)
+        elif mtype == "game.move":
+            target = str(payload.get("scene", ""))
+            scenes = getattr(bundle, "scenes", None)
+            current = bundle.ctx.get_location()
+            if scenes is None or not scenes.exists(target):
+                output.send({"type": "move.result",
+                             "payload": {"ok": False, "reason": "未知地点"}})
+            elif target not in [s.id for s in scenes.neighbors(current)]:
+                output.send({"type": "move.result",
+                             "payload": {"ok": False, "reason": "这里去不了"}})
+            else:
+                bundle.ctx.set_location(target)
+                bundle.api._push_status()
+                output.send({"type": "move.result",
+                             "payload": {"ok": True, "scene": target,
+                                         "name": scenes.name_of(target)}})
+                _send_hub(bundle, output)
+        elif mtype == "game.sleep":
+            scenes = getattr(bundle, "scenes", None)
+            current = bundle.ctx.get_location()
+            if scenes is None or not scenes.can_sleep(current):
+                output.send({"type": "sleep.result",
+                             "payload": {"ok": False,
+                                         "reason": f"{scenes.name_of(current) if scenes else '这里'}睡不着"}})
+            else:
+                def do_sleep() -> None:
+                    recorder.begin()
+                    # 睡觉恢复体力（上限封顶）
+                    max_stamina = bundle.ctx.get_player_stat("max_stamina", 100)
+                    bundle.ctx.set_player_stat("stamina", max_stamina)
+                    bundle.api._push_status()
+                    output.send({"type": "sleep.result", "payload": {"ok": True}})
+                    output.send({"type": "event.done", "payload": {"event": "sleep"}})
+                    bundle.bus.emit("on_day_end")
+                    # 推进一天 + 重置时段
+                    bundle.ctx.set_day(bundle.ctx.get_day() + 1)
+                    bundle.ctx.set_time_of_day("morning")
+                    bundle.api._push_status()
+                    bundle.bus.emit("on_day_begin")
+                    _send_hub(bundle, output)
+                    _send_characters(bundle, output)
+
+                sleep_fut = loop.run_in_executor(executor, do_sleep)
+                sleep_fut.add_done_callback(_drain_future)
         elif mtype == "game.characters":
             # 前端打开角色一览/详情时拉取
             _send_characters(bundle, output)

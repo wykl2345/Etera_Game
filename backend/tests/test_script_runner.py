@@ -416,6 +416,7 @@ class TestReimuStoryLine:
             characters_dir=str(SCRIPTS_DIR.parent / "characters"), saves_dir=str(tmp_path),
         )
         b.ctx.set_character_relation("reimu", 20)
+        b.ctx.set_location("hakurei_shrine")   # 必须与灵梦同场景才出现入口
 
         before = [x["event"] for x in _hub_payload(b)["buttons"]]
         assert "story:reimu_01" in before, "未完成时应有入口"
@@ -440,9 +441,11 @@ class TestReimuStoryLine:
             characters_dir=str(SCRIPTS_DIR.parent / "characters"), saves_dir=str(tmp_path),
         )
         b.ctx.set_character_relation("reimu", 40)   # 好感够
+        b.ctx.set_location("hakurei_shrine")
 
-        row = [x for x in _hub_payload(b)["buttons"] if x["event"] == "story:reimu_02"][0]
-        assert row["available"] is False, "未完成前置剧情时应锁定"
+        # 未完成前置 → 按钮隐藏（条件不满足一律隐藏，不是变灰）
+        events = [x["event"] for x in _hub_payload(b)["buttons"]]
+        assert "story:reimu_02" not in events, "未完成前置剧情时应隐藏入口"
 
         b.ctx.set_global_flag("reimu", "story_01_done", True)
         row2 = [x for x in _hub_payload(b)["buttons"] if x["event"] == "story:reimu_02"][0]
