@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
 from engine.bootstrap import init_engine
-from engine.script_runner import UIOutput
+from engine.script_runner import ScriptAbortedError, UIOutput
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +138,22 @@ def _send_saves_list(bundle: Any, output: UIOutput) -> None:
     output.send({"type": "saves.list", "payload": {"slots": slots}})
 
 
+def _drain_future(fut: Any) -> None:
+    """取走 executor Future 的异常，避免 asyncio 报 "never retrieved"。
+
+    restart / 断线时 stop_all 会中止挂起脚本，ScriptAbortedError 是预期行为，
+    不应当成错误刷日志 —— 其余异常照常记录。
+    """
+    if fut is None:
+        return
+    try:
+        fut.result()
+    except ScriptAbortedError:
+        logger.info("脚本已中止（restart / disconnect），属预期行为")
+    except Exception:  # noqa: BLE001
+        logger.exception("事件执行异常")
+
+
 def _persist_blocked(bundle: Any) -> Optional[str]:
     """对话/交互进行中禁止存读档。
 
@@ -206,6 +222,7 @@ async def handle_connection(
 
             if active_game is not None:
                 active_game.add_done_callback(_on_intro_done)
+                active_game.add_done_callback(_drain_future)
             # 注意：此处不推 hub —— reset_game 还在 executor 里跑，角色尚未载入，
             # 现在推会得到空角色列表。由 _on_intro_done（序章播完）统一推送。
         elif mtype == "game.abort":
@@ -234,7 +251,8 @@ async def handle_connection(
                     output.send({"type": "event.done", "payload": {"event": "day_advance"}})
                     _send_hub(bundle, output)
 
-                loop.run_in_executor(executor, advance)
+                adv_fut = loop.run_in_executor(executor, advance)
+                adv_fut.add_done_callback(_drain_future)
         elif mtype == "game.emit_event":
             # 前端主动触发自定义事件（如工具条「自检」→ custom:run_selftest）。
             # 与 game.start 同理不 await：剧本可能阻塞在 ask_choice。
@@ -258,7 +276,8 @@ async def handle_connection(
                                      "payload": {"event": event_name}})
                         _send_hub(bundle, output)
 
-                loop.run_in_executor(executor, run_event)
+                ev_fut = loop.run_in_executor(executor, run_event)
+                ev_fut.add_done_callback(_drain_future)
                 output.send({"type": "event.result",
                              "payload": {"ok": True, "event": event_name}})
         elif mtype == "game.save":
@@ -291,7 +310,8 @@ async def handle_connection(
                 if ok:
                     bundle.api._push_status()
                     # 触发 on_load 系统事件：剧本可监听恢复剧情
-                    loop.run_in_executor(executor, bundle.bus.emit, "on_load")
+                    load_fut = loop.run_in_executor(executor, bundle.bus.emit, "on_load")
+                    load_fut.add_done_callback(_drain_future)
         elif mtype == "game.quick_save":
             blocked = _persist_blocked(bundle)
             if blocked:
@@ -317,7 +337,10 @@ async def handle_connection(
                 if ok:
                     bundle.api._push_status()
         elif mtype == "game.hub":
-            # 前端进入 Hub 时拉取：角色卡片 + 行动按钮 + 可用性
+            # 前端进入 Hub 时拉取：角色卡片 + 行动按钮 + 可用性。
+            # 同时清空对话快照 —— Hub 是"没有对话"的状态，此时存档不应
+            # 记录上一个事件的对话（否则读档会莫名重放旧剧情）。
+            recorder.begin()
             _send_hub(bundle, output)
         elif mtype == "game.list_saves":
             _send_saves_list(bundle, output)

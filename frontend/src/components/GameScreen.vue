@@ -65,6 +65,11 @@ const { uiMode, toast } = storeToRefs(store)
         title="运行 DSL 全指令自检（会临时改动并恢复世界状态）"
         @click="store.runSelftest"
       >自检</button>
+      <button
+        class="tool-btn tool-btn--accent"
+        :title="store.eventFinished ? '本段已结束，回到行动界面' : '回到行动界面（当前对话将中止）'"
+        @click="store.enterHub()"
+      >返回</button>
       <button class="tool-btn" @click="store.backToMenu">主菜单</button>
     </div>
 

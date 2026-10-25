@@ -116,6 +116,8 @@ interface GameState {
   hubButtons: HubButton[]
   /** Hub：当前选中的角色（null = 未选） */
   hubSelectedChar: string | null
+  /** 当前事件是否已播完（用于提示"可以返回了"） */
+  eventFinished: boolean
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -143,6 +145,7 @@ export const useGameStore = defineStore('game', {
     hubCharacters: [],
     hubButtons: [],
     hubSelectedChar: null,
+    eventFinished: false,
   }),
 
   getters: {
@@ -170,8 +173,24 @@ export const useGameStore = defineStore('game', {
   },
 
   actions: {
-    /** 建立 WS 连接并注册协议处理器 */
+    /**
+     * 建立 WS 连接并注册协议处理器。
+     *
+     * 幂等：HMR 或组件重复挂载会多次调用本方法。若不清理，每次都会注册一批
+     * 新闭包 → handler 累积 → 同一条消息被处理多次（文本重复、选项错乱）。
+     * 因此：先清空旧 handler 再重绑；连接已存在则直接复用（避免重连导致
+     * 后端新建引擎、游戏状态被重置）。
+     */
     connect(): void {
+      wsClient.clearHandlers()
+      this.bindHandlers()
+
+      if (wsClient.isConnected) {
+        this.connected = true
+        wsClient.send({ type: 'game.list_saves' })
+        return
+      }
+
       wsClient.connect(this.wsUrl).then(() => {
         this.connected = true
         // 拉取存档列表（主菜单"继续游戏"可用性判断）
@@ -180,7 +199,10 @@ export const useGameStore = defineStore('game', {
         console.error('[store] 连接失败', e)
         this.connected = false
       })
+    },
 
+    /** 注册全部 WS 消息处理器（与连接解耦，便于幂等重绑） */
+    bindHandlers(): void {
       wsClient.on('ui.text', (m) => {
         const p = (m.payload ?? {}) as { text?: string; color?: string | null; bold?: boolean }
         this.textFlow.push({
@@ -281,11 +303,11 @@ export const useGameStore = defineStore('game', {
         }
       })
 
-      // 剧本（含阻塞交互）播完 → 回 Hub；Hub 按钮可用性由随后的 hub.buttons 刷新
+      // 剧本播完：只记录状态，不切界面。
+      // 理由：自动跳回 Hub 会让"刚看完的对话"存不进存档（对话快照被清空），
+      // 而玩家可能正想存档或回看；由玩家自己点「返回」回 Hub。
       wsClient.on('event.done', () => {
-        if (this.uiMode === 'game' || this.uiMode === 'hub') {
-          this.enterHub()
-        }
+        this.eventFinished = true
       })
 
       // 小游戏触发（DSL minigame.start）：进入 minigame 模式
@@ -407,7 +429,9 @@ export const useGameStore = defineStore('game', {
       this.choice = null
       this.input = null
       this.activeMinigame = null
+      this.eventFinished = false
       this.uiMode = 'hub'
+      // 后端在 game.hub 时会清空对话快照：Hub 里存档 = 无对话可恢复
       wsClient.send({ type: 'game.hub' })
     },
 
@@ -423,6 +447,13 @@ export const useGameStore = defineStore('game', {
         return
       }
       this.autoAdvance = true      // 事件内对话连续播放，不用一段一点
+      this.eventFinished = false
+      // 新事件是独立场景：清掉上一段的文本/背景/立绘，避免累积成一团
+      this.textFlow = []
+      this.choice = null
+      this.input = null
+      this.background = null
+      this.characters.clear()
       this.uiMode = 'game'
       wsClient.send({ type: 'game.emit_event', payload: { event: btn.event } })
     },
@@ -433,6 +464,14 @@ export const useGameStore = defineStore('game', {
         this.showToast('对话进行中，请先完成当前对话')
         return
       }
+      this.eventFinished = false
+      // 新的一天：清掉前一天残留的文本/背景/立绘
+      this.textFlow = []
+      this.choice = null
+      this.input = null
+      this.background = null
+      this.characters.clear()
+      this.uiMode = 'game'
       wsClient.send({ type: 'game.day_advance' })
     },
 

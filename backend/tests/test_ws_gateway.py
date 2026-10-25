@@ -250,6 +250,69 @@ class TestDialogueRecorder:
         assert len(rec.snapshot()) == 1, "快照应为副本，外部修改不影响内部"
 
 
+@pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+def test_hub_clears_dialogue_snapshot(tmp_path):
+    """进入 Hub（game.hub）后再存档，对话快照必须为空。
+
+    回归：早期 recorder 从不清空，Hub 里存档会带上"上一个事件"的对话，
+    读档时莫名重放旧剧情（例如在 Hub 存了档，读档却看到序章）。
+    """
+
+    async def _run():
+        import json
+
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        async def handler(ws):
+            await handle_connection(
+                ws, str(SCRIPTS_DIR), str(CHARACTERS_DIR), saves_dir=str(tmp_path)
+            )
+
+        server = await serve(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        task = asyncio.create_task(server.serve_forever())
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                # 跑完序章（产生对话）
+                await ws.send(json.dumps({"type": "game.start"}))
+                choice = await _recv_until(ws, "ui.ask_choice", timeout=10)
+                await ws.send(json.dumps({
+                    "type": "choice.made", "requestId": choice["requestId"],
+                    "payload": {"index": 1},
+                }))
+                await _collect(ws, 1.5)
+
+                # 叙事界面直接存档 → 应带对话快照
+                await ws.send(json.dumps({"type": "game.save", "payload": {"slot_id": 2}}))
+                r1 = await _recv_until(ws, "save.result", timeout=5)
+                assert r1["payload"]["ok"] is True
+
+                await ws.send(json.dumps({"type": "game.load", "payload": {"slot_id": 2}}))
+                l1 = await _recv_until(ws, "load.result", timeout=5)
+                assert len(l1["payload"].get("dialogue") or []) > 0, \
+                    "叙事界面存档应保留对话快照"
+
+                # 进 Hub（前端会发 game.hub）→ 快照被清空
+                await ws.send(json.dumps({"type": "game.hub"}))
+                await _collect(ws, 0.5)
+
+                await ws.send(json.dumps({"type": "game.save", "payload": {"slot_id": 3}}))
+                r2 = await _recv_until(ws, "save.result", timeout=5)
+                assert r2["payload"]["ok"] is True
+
+                await ws.send(json.dumps({"type": "game.load", "payload": {"slot_id": 3}}))
+                l2 = await _recv_until(ws, "load.result", timeout=5)
+                assert (l2["payload"].get("dialogue") or []) == [], \
+                    "Hub 存档不该带对话快照（否则读档会重放旧剧情）"
+        finally:
+            server.close()
+            await server.wait_closed()
+            task.cancel()
+
+    asyncio.run(_run())
+
+
 class TestPersistBlocked:
     """存读档忙状态判定（对话/选项进行中禁止存读档）。"""
 

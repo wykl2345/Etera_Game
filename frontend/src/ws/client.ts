@@ -52,6 +52,17 @@ export class WsClient {
     return () => this.handlers.get(type)?.delete(handler)
   }
 
+  /**
+   * 清空所有处理器。
+   *
+   * 用途：HMR / 组件重复挂载会让 store 的 connect() 被多次调用，而 on() 每次都
+   * 传入新的闭包，Set 无法去重 → handler 累积，同一条消息会被处理 N 次
+   * （表现：文本重复、选项被后续消息覆盖）。重绑前先清空可保证幂等。
+   */
+  clearHandlers(): void {
+    this.handlers.clear()
+  }
+
   /** 发送消息（未连接时丢弃并告警） */
   send(msg: WsMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
