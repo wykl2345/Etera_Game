@@ -16,17 +16,21 @@
 #   shop      该地点的商店 ID（见 Data/shops/）
 
 regions:
+  # entrance = 从其他区域进来时落在哪个地点
   human_village:
     name: 人间之里
     adjacent: [shrine, forest]
+    entrance: home
 
   shrine:
     name: 博丽神社
     adjacent: [human_village, forest]
+    entrance: hakurei_shrine
 
   forest:
     name: 魔法森林
     adjacent: [human_village, shrine]
+    entrance: magic_forest
 
 scenes:
   home:

@@ -39,3 +39,4 @@ default_flags:
 events:
   - "story/intro"
   - "daily/coffee_shop"
+favorite_items: [煎茶, 团子]

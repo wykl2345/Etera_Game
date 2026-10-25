@@ -399,6 +399,74 @@ class TestCatalog:
         assert all(g["price"] > 0 for g in goods)
 
 
+class TestRegionTravel:
+    """两级场景的移动规则：跨区只能落到对方区域的入口。"""
+
+    def _registry(self):
+        from engine.scenes import SceneRegistry
+
+        return SceneRegistry(SCRIPTS_DIR.parent / "config" / "scenes.yaml")
+
+    def test_same_region_any_scene(self):
+        r = self._registry()
+        assert r.can_travel_to("home", "market") is True
+        assert r.can_travel_to("market", "home") is True
+
+    def test_cross_region_only_entrance(self):
+        r = self._registry()
+        # 神社 → 人间之里：只允许落到入口 home
+        assert r.can_travel_to("hakurei_shrine", "home") is True
+        # 神社 → 市集（人间之里的非入口地点）不允许直穿
+        assert r.can_travel_to("hakurei_shrine", "market") is False
+        # 神社 → 魔法森林（对方入口）
+        assert r.can_travel_to("hakurei_shrine", "magic_forest") is True
+
+    def test_reachable_exposes_region_not_inner_scenes(self):
+        r = self._registry()
+        items = r.reachable("hakurei_shrine")
+        names = {x["name"] for x in items}
+        # 神社同区域没有其他地点；相邻区域各暴露一个入口
+        assert "人间之里" in names
+        assert "魔法森林" in names
+        # 不该直接暴露「市集」这种区域内部地点
+        assert "市集" not in names
+        assert all(x["same_region"] is False for x in items)
+
+
+class TestSellAndItemCatalog:
+    """卖出回收价 + 物品 id 必须能被 Catalog 命中。"""
+
+    def test_script_item_ids_are_defined(self):
+        """剧本里 add_item 用的 id 都应该在 items.yaml 里有定义。
+
+        回归：marisa_mushroom 用 glowing_mushroom，而 items.yaml 曾写成中文
+        「发光蘑菇」→ 背包显示原始 id、送礼好感为 0。
+        """
+        from engine.catalog import Catalog
+
+        catalog = Catalog(
+            SCRIPTS_DIR.parent / "items" / "items.yaml",
+            SCRIPTS_DIR.parent / "shops" / "shops.yaml",
+        )
+        # 剧本里出现过的物品 id
+        assert catalog.item("glowing_mushroom") is not None, "glowing_mushroom 未定义"
+        assert catalog.item("glowing_mushroom").name == "发光蘑菇"
+        assert catalog.gift_value("glowing_mushroom") > 0
+
+    def test_sell_ratio_applied(self):
+        from engine.catalog import Catalog
+        from ws_gateway import SELL_RATIO
+
+        catalog = Catalog(
+            SCRIPTS_DIR.parent / "items" / "items.yaml",
+            SCRIPTS_DIR.parent / "shops" / "shops.yaml",
+        )
+        tea = catalog.item("煎茶")
+        assert tea is not None
+        assert int(tea.price * SELL_RATIO) == 15   # 30 × 0.5
+        assert SELL_RATIO == 0.5
+
+
 class TestDialogueRecorder:
     """DialogueRecorder：只记录画面类消息，控制类不进快照；begin() 清空。"""
 

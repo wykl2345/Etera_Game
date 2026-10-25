@@ -168,6 +168,8 @@ class CharacterState:
     extra_labels: Dict[str, str] = field(default_factory=dict)
     # 互动历史：[{day, title, changes}]，最近的在前
     history: List[Dict[str, Any]] = field(default_factory=list)
+    # 喜欢的物品（送礼时额外加成）
+    favorite_items: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -180,6 +182,7 @@ class CharacterState:
             "extra": dict(self.extra),
             "extra_labels": dict(self.extra_labels),
             "history": list(self.history),
+            "favorite_items": list(self.favorite_items),
         }
 
     @classmethod
@@ -199,6 +202,7 @@ class CharacterState:
             extra=dict(data.get("extra", {})),
             extra_labels=dict(data.get("extra_labels", {})),
             history=list(data.get("history", [])),
+            favorite_items=list(data.get("favorite_items", [])),
         )
 
 

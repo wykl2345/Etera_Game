@@ -44,6 +44,10 @@ class HubButton:
     stamina_cost: int = 0
     # 每天可用次数上限（0 = 不限）；用完变灰，跨天自动重置
     daily_limit: int = 0
+    # 条件：仅在指定时段出现（morning/afternoon/evening/night/dawn，空 = 不限）
+    require_time: str = ""
+    # 条件：天数下限（0 = 不限）
+    require_day_min: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -56,6 +60,8 @@ class HubButton:
             "hide_flag": self.hide_flag,
             "stamina_cost": self.stamina_cost,
             "daily_limit": self.daily_limit,
+            "require_time": self.require_time,
+            "require_day_min": self.require_day_min,
         }
 
 
@@ -186,6 +192,8 @@ class ScenarioLoader:
 
         stamina_cost = _int_field("stamina_cost")
         daily_limit = _int_field("daily_limit")
+        require_day_min = _int_field("require_day_min")
+        require_time = self._hub_get(hub, "require_time", "") or ""
         require_flag = self._hub_get(hub, "require_flag")
         require_relation = self._hub_get(hub, "require_relation")
         try:
@@ -206,6 +214,8 @@ class ScenarioLoader:
             hide_flag=str(hide_flag) if hide_flag else None,
             stamina_cost=stamina_cost,
             daily_limit=daily_limit,
+            require_time=str(require_time),
+            require_day_min=require_day_min,
         )
 
     def list_scripts(self) -> List[str]:

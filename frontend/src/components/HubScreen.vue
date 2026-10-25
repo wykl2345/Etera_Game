@@ -91,6 +91,12 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
           @click="store.doSleep()"
         >睡觉</button>
         <button
+          class="hero-btn"
+          :disabled="hubScene?.id === 'home'"
+          title="直接回自宅（无视相邻规则）"
+          @click="store.goHome()"
+        >回家</button>
+        <button
           v-if="hubScene?.shop"
           class="hero-btn"
           :title="hubScene.shop.name"

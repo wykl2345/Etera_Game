@@ -93,6 +93,7 @@ class CharacterModel:
             "name": template.name,
             "title": getattr(template, "title", "") or "",
             "tags": list(getattr(template, "tags", []) or []),
+            "favorite_items": list(getattr(template, "favorite_items", []) or []),
             "stats": stats,
             "flags": dict(template.default_flags),
             "relation": template.base_relation,

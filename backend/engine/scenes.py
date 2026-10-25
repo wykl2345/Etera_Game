@@ -14,6 +14,8 @@ class Region:
     id: str
     name: str
     adjacent: List[str] = field(default_factory=list)
+    # 从其他区域进来时落在哪个地点（未设置则取该区域第一个地点）
+    entrance: str = ""
 
 
 @dataclass
@@ -74,6 +76,7 @@ class SceneRegistry:
                 id=str(rid),
                 name=str(spec.get("name", rid)),
                 adjacent=[str(x) for x in (spec.get("adjacent") or [])],
+                entrance=str(spec.get("entrance", "") or ""),
             )
         # 相邻区域补双向
         for region in list(self._regions.values()):
@@ -156,19 +159,52 @@ class SceneRegistry:
             out.append(d)
             seen.add(s.id)
 
-        # ② 相邻区域
+        # ② 相邻区域 —— 只暴露「区域」，不直接暴露对方区域里的具体地点。
+        #    选中区域后落到该区域的 entrance，再在区域内走到具体地点。
         region = self._regions.get(current.region)
         for adj_region_id in (region.adjacent if region else []):
-            for s in self._scenes.values():
-                if s.region != adj_region_id or s.id in seen:
-                    continue
-                d = s.to_dict()
-                d["same_region"] = False
-                d["region_name"] = self.region_name(s.region)
-                out.append(d)
-                seen.add(s.id)
+            adj = self._regions.get(adj_region_id)
+            if adj is None:
+                continue
+            entrance = adj.entrance or self._default_entrance(adj.id)
+            out.append({
+                "id": entrance,          # 移动目标仍是地点 id（落点）
+                "name": adj.name,
+                "desc": f"前往{adj.name}",
+                "can_sleep": False,
+                "shop": "",
+                "region": adj.id,
+                "same_region": False,
+                "region_name": adj.name,
+                "is_region_entry": True,
+            })
 
         return out
+
+    def _default_entrance(self, region_id: str) -> str:
+        for s in self._scenes.values():
+            if s.region == region_id:
+                return s.id
+        return ""
+
+    def region_entrance(self, region_id: str) -> str:
+        region = self._regions.get(region_id)
+        if region and region.entrance:
+            return region.entrance
+        return self._default_entrance(region_id)
+
+    def can_travel_to(self, from_scene: str, to_scene: str) -> bool:
+        """同区域可直达；跨区域只有落点正好是对方区域 entrance 时允许。"""
+        cur = self._scenes.get(from_scene)
+        dst = self._scenes.get(to_scene)
+        if cur is None or dst is None:
+            return False
+        if cur.region == dst.region:
+            return True
+        region = self._regions.get(cur.region)
+        if region is None or dst.region not in region.adjacent:
+            return False
+        return self.region_entrance(dst.region) == dst.id
 
     def neighbors(self, scene_id: str) -> List[Scene]:
         """兼容旧接口：返回可达地点对象列表。"""

@@ -19,7 +19,9 @@ items:
     gift_value: 8
     desc: 三色团子，甜度刚好。
 
-  发光蘑菇:
+  # 注意：id 必须与剧本里 data.add_item() 用的键一致（marisa_mushroom.lua 用的是
+  # glowing_mushroom），否则 Catalog 查不到 → 界面会显示原始 id、送礼好感为 0。
+  glowing_mushroom:
     name: 发光蘑菇
     price: 80
     gift_value: 6

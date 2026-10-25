@@ -38,3 +38,4 @@ default_flags:
 events:
   - "story/intro"
   - "daily/coffee_shop"
+favorite_items: [发光蘑菇]

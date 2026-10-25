@@ -85,6 +85,9 @@ async def _sender(websocket: Any, queue: asyncio.Queue) -> None:
             return
 
 
+# 商店回收价 = 基准价 × 该比例
+SELL_RATIO = 0.5
+
 # 关系阶段门槛（与 v1 设计文档一致：敌视 → 伴侣）
 _RELATION_STAGES = [
     (-100, -50, "敌视", "hostile"),
@@ -209,6 +212,14 @@ def _hub_payload(bundle: Any) -> Dict[str, Any]:
         if btn.require_relation is not None:
             if bundle.ctx.get_character_relation(btn.char) < btn.require_relation:
                 continue
+        # 时段 / 天数条件（不满足同样隐藏）
+        req_time = getattr(btn, "require_time", "")
+        if req_time and bundle.ctx.get_time_of_day().value != req_time:
+            continue
+        req_day = getattr(btn, "require_day_min", 0) or 0
+        if req_day and bundle.ctx.get_day() < req_day:
+            continue
+
         # 角色必须在当前场景
         char_state = bundle.ctx.get_character(btn.char)
         if char_state is None or char_state.location != scene_id:
@@ -483,7 +494,7 @@ async def handle_connection(
             if scenes is None or not scenes.exists(target):
                 output.send({"type": "move.result",
                              "payload": {"ok": False, "reason": "未知地点"}})
-            elif target not in [s.id for s in scenes.neighbors(current)]:
+            elif not scenes.can_travel_to(current, target):
                 output.send({"type": "move.result",
                              "payload": {"ok": False, "reason": "这里去不了"}})
             else:
@@ -493,6 +504,20 @@ async def handle_connection(
                              "payload": {"ok": True, "scene": target,
                                          "name": scenes.name_of(target)}})
                 _send_hub(bundle, output)
+        elif mtype == "game.home":
+            # 主角功能栏的「回家」：无视相邻规则直接回自宅
+            scenes = getattr(bundle, "scenes", None)
+            home_scene = "home"
+            if scenes is not None and scenes.exists(home_scene):
+                bundle.ctx.set_location(home_scene)
+                bundle.api._push_status()
+                output.send({"type": "move.result",
+                             "payload": {"ok": True, "scene": home_scene,
+                                         "name": scenes.name_of(home_scene)}})
+                _send_hub(bundle, output)
+            else:
+                output.send({"type": "move.result",
+                             "payload": {"ok": False, "reason": "没有可回的家"}})
         elif mtype == "game.sleep":
             scenes = getattr(bundle, "scenes", None)
             current = bundle.ctx.get_location()
@@ -531,6 +556,8 @@ async def handle_connection(
                     "count": cnt,
                     "gift_value": it.gift_value if it else 0,
                     "desc": it.desc if it else "",
+                    # 回收价：基准价的 50%（物品未定义时按 0）
+                    "sell_price": int(it.price * SELL_RATIO) if it else 0,
                 })
             items.sort(key=lambda x: x["id"])
             output.send({"type": "inventory.data", "payload": {"items": items}})
@@ -553,6 +580,25 @@ async def handle_connection(
                     "goods": goods,
                     "money": money,
                 }})
+        elif mtype == "game.sell":
+            catalog = getattr(bundle, "catalog", None)
+            item_id = str(payload.get("item", ""))
+            qty = max(1, int(payload.get("count", 1) or 1))
+            if bundle.ctx.get_item_count(item_id) < qty:
+                output.send({"type": "sell.result",
+                             "payload": {"ok": False, "item": item_id,
+                                         "reason": "背包里没有这么多"}})
+            else:
+                it = catalog.item(item_id) if catalog else None
+                income = int((it.price if it else 0) * SELL_RATIO) * qty
+                bundle.ctx.remove_item(item_id, qty)
+                bundle.ctx.modify_player_stat("money", income)
+                bundle.api._push_status()
+                output.send({"type": "sell.result",
+                             "payload": {"ok": True, "item": item_id, "count": qty,
+                                         "income": income,
+                                         "money": bundle.ctx.get_player_stat("money", 0)}})
+                _send_characters(bundle, output)
         elif mtype == "game.buy":
             catalog = getattr(bundle, "catalog", None)
             item_id = str(payload.get("item", ""))
@@ -589,6 +635,11 @@ async def handle_connection(
             else:
                 gain = catalog.gift_value(item_id) if catalog else 0
                 item_name = catalog.item_name(item_id) if catalog else item_id
+                # 对方喜欢的物品 → 好感加成 50%
+                ch_state = bundle.ctx.get_character(char_id)
+                liked = bool(ch_state and item_id in ch_state.favorite_items)
+                if liked:
+                    gain = int(round(gain * 1.5))
                 bundle.ctx.remove_item(item_id, 1)
                 new_rel = bundle.ctx.modify_character_relation(char_id, gain)
                 bundle.ctx.add_character_history(char_id, {
@@ -599,7 +650,8 @@ async def handle_connection(
                 bundle.api._push_status()
                 output.send({"type": "gift.result",
                              "payload": {"ok": True, "char": char_id, "item": item_id,
-                                         "gain": gain, "relation": new_rel}})
+                                         "gain": gain, "relation": new_rel,
+                                         "liked": liked}})
                 _send_characters(bundle, output)
                 _send_hub(bundle, output)
         elif mtype == "game.characters":

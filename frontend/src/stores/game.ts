@@ -114,6 +114,8 @@ export interface InventoryItem {
   count: number
   gift_value: number
   desc: string
+  /** 卖出单价（商店回收价） */
+  sell_price: number
 }
 
 /** 商店商品 */
@@ -210,6 +212,8 @@ interface GameState {
   giftChar: string | null
   /** 背包（送礼面板用） */
   inventory: InventoryItem[]
+  /** 商店面板页签：买入 / 卖出 */
+  shopTab: 'buy' | 'sell'
 }
 
 const DEFAULT_WS = 'ws://127.0.0.1:8765'
@@ -247,6 +251,7 @@ export const useGameStore = defineStore('game', {
     shopGoods: [],
     giftChar: null,
     inventory: [],
+    shopTab: 'buy',
   }),
 
   getters: {
@@ -437,6 +442,19 @@ export const useGameStore = defineStore('game', {
         this.shopGoods = p.goods ?? []
       })
 
+      // 卖出结果
+      wsClient.on('sell.result', (m) => {
+        const p = (m.payload ?? {}) as {
+          ok?: boolean; item?: string; income?: number; reason?: string
+        }
+        if (p.ok) {
+          this.showToast(`卖出 ${p.item}（+${p.income} 文）`)
+          this.refreshInventory()
+        } else {
+          this.showToast(p.reason ?? '卖不出去')
+        }
+      })
+
       // 购买结果
       wsClient.on('buy.result', (m) => {
         const p = (m.payload ?? {}) as {
@@ -453,10 +471,12 @@ export const useGameStore = defineStore('game', {
       // 送礼结果
       wsClient.on('gift.result', (m) => {
         const p = (m.payload ?? {}) as {
-          ok?: boolean; item?: string; gain?: number; relation?: number; reason?: string
+          ok?: boolean; item?: string; gain?: number; relation?: number
+          liked?: boolean; reason?: string
         }
         if (p.ok) {
-          this.showToast(`送出 ${p.item}，好感 +${p.gain}（现在 ${p.relation}）`)
+          const liked = p.liked ? "（对方很喜欢！）" : ""
+          this.showToast(`送出 ${p.item}，好感 +${p.gain}${liked}（现在 ${p.relation}）`)
           this.panel = null
           this.giftChar = null
         } else {
@@ -672,6 +692,7 @@ export const useGameStore = defineStore('game', {
     /** 打开当前地点的商店 */
     openShop(): void {
       this.panel = 'shop'
+      this.shopTab = 'buy'
       wsClient.send({ type: 'game.shop' })
     },
 
@@ -701,6 +722,22 @@ export const useGameStore = defineStore('game', {
       })
     },
 
+    /** 回家：无视相邻规则直接回自宅 */
+    goHome(): void {
+      wsClient.send({ type: 'game.home' })
+    },
+
+    /** 切换商店页签（买入/卖出） */
+    setShopTab(tab: 'buy' | 'sell'): void {
+      this.shopTab = tab
+      if (tab === 'sell') this.refreshInventory()
+    },
+
+    /** 卖出背包物品 */
+    sellItem(itemId: string): void {
+      wsClient.send({ type: 'game.sell', payload: { item: itemId, count: 1 } })
+    },
+
     /** 移动到相邻场景 */
     moveTo(sceneId: string): void {
       wsClient.send({ type: 'game.move', payload: { scene: sceneId } })
@@ -722,6 +759,10 @@ export const useGameStore = defineStore('game', {
       this.activeMinigame = null
       this.eventFinished = false
       this.uiMode = 'hub'
+      // 关键：中止可能仍挂起的脚本。
+      // 玩家从对话中途点「返回」时，后端脚本还等在 ask_choice 上，
+      // 不中止的话后续所有操作都会被 "对话进行中" 挡住。
+      wsClient.send({ type: 'game.abort' })
       // 后端在 game.hub 时会清空对话快照：Hub 里存档 = 无对话可恢复
       wsClient.send({ type: 'game.hub' })
     },
