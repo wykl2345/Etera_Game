@@ -34,20 +34,14 @@ watch(cgImage, () => { cgFailed.value = false })
       <BackgroundLayer />
       <CharacterLayer />
 
-      <!-- 全屏 CG 特写（DSL ui.cg）：盖住背景与立绘，只留 CG 与文本 -->
-      <div v-if="cgImage" class="cg-layer">
-        <img
-          v-if="!cgFailed"
-          :src="cgUrl"
-          class="cg-img"
-          alt=""
-          @error="cgFailed = true"
-        />
-        <div v-else class="cg-placeholder">
-          <span class="cg-name">{{ cgImage }}</span>
-          <span class="cg-hint">CG 素材待补</span>
-          <span class="cg-path">images/cg/{{ cgImage }}.png</span>
-        </div>
+      <!-- 全屏 CG 特写（DSL ui.cg）：有素材才盖住背景与立绘。
+           素材缺失时**不渲染黑色层**，保留背景、只在角落提示，
+           否则玩家会看到画面突然变黑（误以为 bug）。 -->
+      <div v-if="cgImage && !cgFailed" class="cg-layer">
+        <img :src="cgUrl" class="cg-img" alt="" @error="cgFailed = true" />
+      </div>
+      <div v-else-if="cgImage" class="cg-missing" :title="`放入 resources/images/cg/${cgImage}.png 即显示`">
+        CG「{{ cgImage }}」素材未准备
       </div>
 
       <div class="text-area">
@@ -126,26 +120,21 @@ watch(cgImage, () => { cgFailed.value = false })
   height: 100%;
   object-fit: contain;
 }
-.cg-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-.cg-name {
+/* 素材缺失：角落小标记，不遮挡画面 */
+.cg-missing {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  z-index: 6;
+  padding: 5px 10px;
+  background: rgba(22, 26, 32, 0.85);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--fg-dim);
-  letter-spacing: 0.2em;
-}
-.cg-hint {
   font-size: 10px;
-  color: #3a434d;
-}
-.cg-path {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: #2f373f;
+  color: var(--fg-dim);
+  letter-spacing: 0.05em;
+  pointer-events: none;
 }
 @keyframes cgFade {
   from { opacity: 0; }
