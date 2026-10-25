@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/settings'
 const store = useGameStore()
 const settings = useSettingsStore()
 const { textFlow } = storeToRefs(store)
-const { typewriterEnabled, textSpeed, fontSize } = storeToRefs(settings)
+const { typewriterEnabled, textSpeed, lineDelay, fontSize } = storeToRefs(settings)
 
 const scrollBox = ref<HTMLElement | null>(null)
 
@@ -21,6 +21,15 @@ const revealed = ref<number[]>([])
 const showContinue = ref(false)
 
 let rafId = 0
+/** 自动连播时的行间停顿定时器 */
+let lineTimer = 0
+
+function clearLineTimer(): void {
+  if (lineTimer) {
+    clearTimeout(lineTimer)
+    lineTimer = 0
+  }
+}
 
 async function scrollToBottom(): Promise<void> {
   await nextTick()
@@ -40,12 +49,14 @@ watch(
       revealed.value = []
       showContinue.value = false
       cancelAnimationFrame(rafId)
+      clearLineTimer()
       store.textIdle = true
       return
     }
     // 读档重放：快照全文直接显示，不逐字重播
     if (store.restoring) {
       cancelAnimationFrame(rafId)
+      clearLineTimer()
       confirmed.value = flow.length
       revealed.value = flow.map((l) => l.text.length)
       activeIdx.value = -1
@@ -137,9 +148,15 @@ function onRevealDone(): void {
   }
   scrollToBottom()
   if (store.autoAdvance) {
-    // 自动播放模式：直接推进下一段（选项选择/输入提交/小游戏结束后的对话）
+    // 自动播放模式：每行播完后**停顿一下**再翻下一行，
+    // 否则后端连着推几行时，读者还没看完上一行就开始下一行了。
     if (confirmed.value < textFlow.value.length) {
-      startNext()
+      clearLineTimer()
+      lineTimer = window.setTimeout(() => {
+        lineTimer = 0
+        // 期间玩家可能已经手动点击 / 切换界面
+        if (activeIdx.value === -1 && !showContinue.value) startNext()
+      }, Math.max(0, lineDelay.value))
     } else if (store.eventFinished) {
       // 全部播完且事件已结束 → 提示玩家点击返回 Hub
       showContinue.value = true
@@ -214,7 +231,10 @@ watch(typewriterEnabled, () => {
   }
 })
 
-onUnmounted(() => cancelAnimationFrame(rafId))
+onUnmounted(() => {
+  clearLineTimer()
+  cancelAnimationFrame(rafId)
+})
 </script>
 
 <template>
@@ -252,7 +272,8 @@ onUnmounted(() => cancelAnimationFrame(rafId))
 .text-flow.large { font-size: 18px; }
 
 .line {
-  animation: fadeUp 0.25s ease;
+  /* 不再对每一行做 fadeUp：后端连着推多行时多个淡入动画会叠在一起显得乱。
+     逐字打印本身就是"浮现"效果，足够了。 */
   word-break: break-all;
   white-space: pre-line; /* 支持 ui.text 内 \n 多行 */
 }

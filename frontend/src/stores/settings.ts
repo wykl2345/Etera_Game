@@ -6,6 +6,8 @@ import { defineStore } from 'pinia'
 export interface Settings {
   /** 逐字打印速度（每字毫秒数） */
   textSpeed: number
+  /** 自动播放时每行播完后的停顿（毫秒），让读者看完再翻下一行 */
+  lineDelay: number
   /** 是否启用逐字打印 */
   typewriterEnabled: boolean
   /** 正文字号 */
@@ -18,6 +20,7 @@ const STORAGE_KEY = 'etera-settings'
 
 export const DEFAULT_SETTINGS: Settings = {
   textSpeed: 18,
+  lineDelay: 600,
   typewriterEnabled: true,
   fontSize: 'medium',
   musicVolume: 0.8,

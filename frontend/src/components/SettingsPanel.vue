@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settings'
 
 const store = useGameStore()
 const settings = useSettingsStore()
-const { textSpeed, typewriterEnabled, fontSize, musicVolume } = storeToRefs(settings)
+const { textSpeed, lineDelay, typewriterEnabled, fontSize, musicVolume } = storeToRefs(settings)
 </script>
 
 <template>
@@ -22,6 +22,18 @@ const { textSpeed, typewriterEnabled, fontSize, musicVolume } = storeToRefs(sett
             @input="settings.set('textSpeed', Number(($event.target as HTMLInputElement).value))"
           />
           <span class="hint">{{ textSpeed }} ms/字</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <span class="label">行间停顿</span>
+        <div class="control">
+          <input
+            type="range" min="0" max="2000" step="100"
+            :value="lineDelay"
+            @input="settings.set('lineDelay', Number(($event.target as HTMLInputElement).value))"
+          />
+          <span class="hint">{{ lineDelay }} ms</span>
         </div>
       </div>
 
