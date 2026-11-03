@@ -92,6 +92,22 @@ watch(cgImage, () => { cgFailed.value = false })
     <!-- save/load/settings 已上移到 App.vue 作为悬浮面板，不再在此渲染 -->
     <MinigameHost v-if="uiMode === 'minigame'" />
 
+    <!-- 兜底：任何未知/非法模式都不要渲染成“只有主题色的空壳”，
+         给出可见错误与返回路径（正常情况下不会出现）。 -->
+    <div
+      v-if="uiMode !== 'game' && uiMode !== 'minigame'"
+      class="ui-broken"
+      @click.stop
+    >
+      <h2>界面状态异常</h2>
+      <p>当前模式：<code>{{ uiMode }}</code></p>
+      <p>已记录最近 200 条 UI 状态转移（控制台 <code>window.__eteraUiLog</code> 可导出）。</p>
+      <div class="ui-broken-actions">
+        <button class="btn" @click="store.enterHub()">回到行动界面</button>
+        <button class="btn" @click="store.backToMenu()">回到主菜单</button>
+      </div>
+    </div>
+
     <Transition name="toast">
       <div v-if="toast" class="toast">{{ toast }}</div>
     </Transition>
@@ -197,6 +213,54 @@ watch(cgImage, () => { cgFailed.value = false })
 .tool-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.ui-broken {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+}
+.ui-broken h2 {
+  margin: 0 0 6px;
+  color: var(--fg);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+}
+.ui-broken p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.ui-broken code {
+  color: var(--accent);
+}
+.ui-broken-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+.ui-broken .btn {
+  padding: 9px 22px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.ui-broken .btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent);
 }
 
 .toast {

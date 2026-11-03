@@ -19,3 +19,7 @@ saves/
 
 # 待验收的图片上传（验收后归档进 resources/）
 incoming/
+
+# 测试/安装缓存
+.npm-cache/
+coverage/
