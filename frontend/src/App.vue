@@ -5,6 +5,7 @@ import { useGameStore } from './stores/game'
 import MainMenu from './components/MainMenu.vue'
 import HubScreen from './components/HubScreen.vue'
 import GameScreen from './components/GameScreen.vue'
+import OverlayHost from './components/OverlayHost.vue'
 import SaveScreen from './components/SaveScreen.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import CharacterListModal from './components/CharacterListModal.vue'
@@ -24,9 +25,12 @@ onMounted(() => {
 <template>
   <div class="app-root">
     <MainMenu v-if="uiMode === 'main_menu'" />
-    <!-- Hub = 行动枢纽（系统界面）；game/minigame = 叙事界面 -->
+    <!-- Hub = 行动枢纽（系统界面）；game = 叙事界面 -->
     <HubScreen v-else-if="uiMode === 'hub'" />
     <GameScreen v-else />
+
+    <!-- 覆盖层模块（P3：小游戏等）；根界面保持挂载，不参与 uiMode 切换 -->
+    <OverlayHost />
 
     <!-- 系统面板：悬浮在当前界面之上，不替换页面 -->
     <SaveScreen v-if="panel === 'save'" mode="save" />

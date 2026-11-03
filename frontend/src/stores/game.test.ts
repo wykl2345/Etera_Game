@@ -36,56 +36,145 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('UI 模式栈', () => {
-  it('小游戏正常打开/返回：回到打开它的那个界面', () => {
+describe('Overlay Host（P3）', () => {
+  it('主菜单打开小游戏：根界面不变，主界面保持挂载', () => {
     const s = useGameStore()
     s.uiMode = 'main_menu'
 
     s.openMinigame()
-    expect(s.uiMode).toBe('minigame')
-    expect(s.modeStack).toEqual(['main_menu'])
 
-    s.finishMinigame({ won: true })
     expect(s.uiMode).toBe('main_menu')
-    expect(s.modeStack).toEqual([])
+    expect(s.overlay?.moduleId).toBe('minigame')
+    expect(s.overlay?.input).toEqual({ gameId: 'slime_battle' })
+    expect(s.overlay?.requestId).toBeNull()
   })
 
-  it('空栈 pop 不会回退到 game（避免默认空壳）', () => {
-    const s = useGameStore()
-    s.uiMode = 'hub'
-    s.modeStack = []
-
-    s.popMode()
-
-    expect(s.uiMode).toBe('hub')
-  })
-
-  it('小游戏「返回」重复触发是幂等的，不会二次 pop', () => {
+  it('完成后关闭覆盖层，仍停留在打开它的主菜单', () => {
     const s = useGameStore()
     s.uiMode = 'main_menu'
     s.openMinigame()
 
-    s.finishMinigame({ won: true })
     s.finishMinigame({ won: true })
 
     expect(s.uiMode).toBe('main_menu')
-    expect(s.modeStack).toEqual([])
+    expect(s.overlay).toBeNull()
   })
 
-  it('记录 UI 状态转移（from/to/栈/来源）', () => {
+  it('重复完成是幂等的（不会二次 pop / 空壳）', () => {
     const s = useGameStore()
     s.uiMode = 'main_menu'
-
     s.openMinigame()
 
-    const last = s.uiTransitions[s.uiTransitions.length - 1]
-    expect(last).toMatchObject({
-      fromMode: 'main_menu',
-      toMode: 'minigame',
-      action: 'push',
-      source: 'user',
+    s.finishMinigame({ won: true })
+    s.finishMinigame({ won: true })
+
+    expect(s.uiMode).toBe('main_menu')
+    expect(s.overlay).toBeNull()
+  })
+
+  it('DSL minigame.start：根界面保持 game，完成后按 requestId 回传', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({
+      type: 'minigame.start',
+      requestId: 'req-1',
+      payload: { game_id: 'slime_battle' },
     })
-    expect(last.stackAfter).toEqual(['main_menu'])
+    expect(s.uiMode).toBe('game')
+    expect(s.overlay?.moduleId).toBe('minigame')
+    expect(s.overlay?.requestId).toBe('req-1')
+
+    s.completeOverlay({ won: true })
+
+    expect(s.uiMode).toBe('game')
+    expect(s.overlay).toBeNull()
+    expect(wsClient.send).toHaveBeenCalledWith({
+      type: 'minigame.result',
+      requestId: 'req-1',
+      payload: { result: { won: true } },
+    })
+  })
+
+  it('取消覆盖层会回传 cancelled', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+    dispatch({
+      type: 'minigame.start',
+      requestId: 'req-2',
+      payload: { game_id: 'slime_battle' },
+    })
+
+    s.cancelOverlay()
+
+    expect(s.overlay).toBeNull()
+    expect(wsClient.send).toHaveBeenCalledWith({
+      type: 'minigame.result',
+      requestId: 'req-2',
+      payload: { result: { cancelled: true } },
+    })
+  })
+
+  it('覆盖层存在时不允许存档/快速读档', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.openMinigame()
+
+    expect(s.canPersist).toBe(false)
+  })
+
+  it('旧实例的迟到回调不会关闭新覆盖层', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.openMinigame()
+    const oldId = s.overlay?.id
+    s.completeOverlay({ won: true }, 'completed', 'component', oldId)
+    expect(s.overlay).toBeNull()
+
+    s.openMinigame()
+    const currentId = s.overlay?.id
+    s.completeOverlay({ won: true }, 'completed', 'component', oldId)
+    expect(s.overlay?.id).toBe(currentId)
+
+    s.completeOverlay({ won: true }, 'completed', 'component', currentId)
+    expect(s.overlay).toBeNull()
+  })
+
+  it('回主菜单会静默清理覆盖层', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.openMinigame()
+
+    s.backToMenu()
+
+    expect(s.uiMode).toBe('main_menu')
+    expect(s.overlay).toBeNull()
+  })
+
+  it('记录 overlay-open / overlay-close 转移', () => {
+    const s = useGameStore()
+    s.uiMode = 'main_menu'
+
+    s.openMinigame()
+    const opened = s.uiTransitions[s.uiTransitions.length - 1]
+    expect(opened).toMatchObject({
+      action: 'overlay-open',
+      fromMode: 'main_menu',
+      toMode: 'main_menu',
+      overlay: { moduleId: 'minigame' },
+    })
+
+    s.finishMinigame({ won: true })
+    const closed = s.uiTransitions[s.uiTransitions.length - 1]
+    expect(closed).toMatchObject({
+      action: 'overlay-close',
+      fromMode: 'main_menu',
+      toMode: 'main_menu',
+      overlay: { moduleId: 'minigame' },
+      reason: 'completed',
+    })
   })
 })
 
@@ -184,7 +273,7 @@ describe('过期的 WebSocket 消息', () => {
     dispatch({ type: 'minigame.start', payload: { game_id: 'slime_battle' } })
 
     expect(s.uiMode).toBe('main_menu')
-    expect(s.activeMinigame).toBeNull()
+    expect(s.overlay).toBeNull()
   })
 
   it('界面已切换后，迟到的读档结果被丢弃', () => {

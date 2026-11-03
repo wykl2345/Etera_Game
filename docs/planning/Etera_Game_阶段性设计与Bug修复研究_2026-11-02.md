@@ -330,22 +330,38 @@ Application Shell（主题、背景、公共容器，常驻）
 
 | 路径 | 根因 | 修复 |
 |---|---|---|
-| 额外 pop / 重复退出小游戏 | `popMode()` 空栈时回退到 `game` | 空栈 no-op；`finishMinigame` 幂等；小游戏取消走 `cancelMinigame()` |
+| 额外 pop / 重复退出小游戏 | `popMode()` 空栈时回退到 `game` | 空栈 no-op；`finishMinigame` 幂等；P3 把小游戏迁到 Overlay Host、删除模式栈 |
 | 睡觉结果迟到 | 玩家回主菜单后 `sleep.result` 仍切到 game 并清空画面 | 只在 `hub` 处理；其余视为过期消息 |
 | 读档结果迟到 | 读档异步返回时界面已切走 | `pendingLoadEpoch`/`uiEpoch` 代际校验，过期丢弃 |
 | 事件结束迟到 | abort 后脚本 `finally` 仍发 `event.done`，把主菜单顶成 Hub；旧事件 done 会结束新事件 | 只在 `game` 处理；`pendingEvent`（事件名 + 代际）匹配才接受 |
-| 小游戏启动迟到 | `minigame.start` 在主菜单到达 | 只在 `game` 且无活动小游戏时处理 |
+| 小游戏启动迟到 | `minigame.start` 在主菜单到达 | 只在 `game` 且无活动覆盖层时处理 |
 | Hub 行动被拒 | 前端已切 game 并清空内容，失败只弹 toast | 无内容时回收 `enterHub()` |
 | 读档面板未关闭 | `load.result` 成功后 `panel='load'` 残留 | 成功后清 `panel`/`detailChar` |
 | 未知模式空白页 | `App.vue` 落到无匹配分支的 GameScreen | 渲染「界面状态异常」恢复页 |
 | 自检从 Hub 触发 | 剧本先弹选项，但 Hub 不渲染 ChoiceMenu | `runSelftest()` 先切叙事界面 |
 
-**状态转移日志**：所有 `uiMode`/`modeStack` 写入统一走 `transitionTo()`，保留最近 200 条，
-`window.__eteraUiLog` 可导出；生产环境 `localStorage.etera.uiDebug=1` 打开控制台输出。
+**状态转移日志**：根切换与覆盖层开关统一记录，保留最近 200 条
+（`window.__eteraUiLog`；生产环境 `localStorage.etera.uiDebug=1` 打开控制台输出）。
 
-**回归**：`frontend/src/stores/game.test.ts` 14 项（`cd frontend && npm test`）；
+**回归**：`frontend/src/stores/game.test.ts` 19 项（`cd frontend && npm test`）；
 真实 Chromium 中连点小游戏「返回」验证不再进入空壳；后端 162 项测试不受影响。
 决策：`docs/adr/0008-ui-state-machine.md`；架构：`docs/architecture.md` §6.2。
 
-**仍未完成**：玩家现场的最小复现录像/日志（若再次出现，导出 `window.__eteraUiLog`）；
-完整 Overlay Host 抽象（第三方模块契约）仍按 §3.3/§5.5 后续推进，本次只做面板化与状态机加固。
+### 10.1 P3 进展（2026-11-03）
+
+已完成**最小 Overlay Host**：
+
+- 根界面只保留 `main_menu / hub / game`；`minigame` 从 `uiMode` 和模式栈中移除。
+- `store.overlay = { id, moduleId, input, requestId }`；模块注册表
+  `frontend/src/overlays/index.ts` 当前注册 `minigame`。
+- 模块通过 `complete(result)` / `cancel()` 交回结果；store 负责幂等关闭、`requestId` 回传、
+  实例 id 校验（旧模块迟到回调不会关闭新覆盖层）。
+- 主界面在覆盖层打开时保持挂载；小游戏关闭后原界面原样保留，不再需要“返回上一模式”。
+- 覆盖层开关写入 UI 转移日志（`overlay-open/overlay-close` + `overlay.id/moduleId`）。
+
+**验收**：主菜单打开小游戏→返回仍在主菜单；序章选「帮灵梦清理异变」→小游戏覆盖层→
+中途退出后对话继续；19 项 store 测试全绿；真实 Chromium 验证通过。
+决策：`docs/adr/0009-overlay-host.md`。
+
+**仍未完成**：P4 的非小游戏模块 + 独立最小 Mod（复用 `input/complete/cancel` 契约）；
+第三方模块的 iframe/权限隔离；玩家现场的最小复现录像/日志（若再次出现，导出 `window.__eteraUiLog`）。

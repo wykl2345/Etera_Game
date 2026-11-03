@@ -1,30 +1,33 @@
 <script setup lang="ts">
 /**
- * 小游戏宿主：按 store.activeMinigame.gameId 动态挂载注册表中的组件。
- * 子组件通过 emit('finish', result) 回传结果（ADR-0005 架构）。
+ * 小游戏模块（Overlay 注册表第一个模块）。
+ * 只依赖 input（gameId）与 complete/cancel 事件，不直接读写 global store。
  */
 import { computed } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useGameStore } from '../stores/game'
 import { findMinigame } from '../games'
 
-const store = useGameStore()
-const { activeMinigame } = storeToRefs(store)
+const props = defineProps<{
+  input: Record<string, unknown>
+}>()
 
-const def = computed(() =>
-  activeMinigame.value ? findMinigame(activeMinigame.value.gameId) : undefined,
-)
+const emit = defineEmits<{
+  complete: [result: Record<string, unknown>]
+  cancel: []
+}>()
+
+const gameId = computed(() => String(props.input?.gameId ?? ''))
+const def = computed(() => findMinigame(gameId.value))
 
 function onFinish(result: Record<string, unknown>): void {
-  store.finishMinigame(result)
+  emit('complete', result)
 }
 </script>
 
 <template>
   <component v-if="def" :is="def.component" @finish="onFinish" @click.stop />
   <div v-else class="missing">
-    <p>未找到小游戏：{{ activeMinigame?.gameId }}</p>
-    <button class="btn" @click="store.cancelMinigame()">返回</button>
+    <p>未找到小游戏：{{ gameId }}</p>
+    <button class="btn" @click="emit('cancel')">返回</button>
   </div>
 </template>
 

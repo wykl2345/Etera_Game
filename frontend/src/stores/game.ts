@@ -5,35 +5,38 @@
 import { defineStore } from 'pinia'
 import { nextTick } from 'vue'
 import { wsClient } from '../ws/client'
-import {
-  isBaseUiMode,
-  isOverlayUiMode,
-  isValidUiMode,
-  popUiState,
-  pushUiState,
-  resetUiState,
-  type BaseMode,
-  type UiMode,
-  type UiModeState,
-} from './uiMode'
+import { type BaseMode, type UiMode } from './uiMode'
 
 export type { UiMode } from './uiMode'
 
 /** 静态资源基地址（后端 main.py 的静态服务，默认 127.0.0.1:8766） */
 export const ASSET_BASE = 'http://127.0.0.1:8766'
 
-export type UiTransitionAction = 'push' | 'pop' | 'reset' | 'set' | 'noop'
+export type UiTransitionAction = 'reset' | 'overlay-open' | 'overlay-close'
 export type UiTransitionSource = 'user' | 'ws' | 'system' | 'component'
 
-/** 一次 UI 状态转移（用于 100~300 条环形缓冲与问题取证） */
+/** 覆盖层实例：独立 UI 模块（当前只有小游戏），不改变根界面 uiMode */
+export interface OverlayInstance {
+  /** 每次打开唯一；用于丢弃旧实例的迟到回调 */
+  id: string
+  /** 模块 id，对应 overlays/ 注册表 */
+  moduleId: string
+  /** 传给模块的初始化数据（必须可序列化） */
+  input: Record<string, unknown>
+  /** DSL 触发的 requestId；主菜单测试入口为 null */
+  requestId: string | null
+}
+
+export type OverlayStatus = 'completed' | 'cancelled' | 'failed'
+
+/** 一次 UI 状态转移（用于 200 条环形缓冲与问题取证） */
 export interface UiTransition {
   time: string
   action: UiTransitionAction
   source: UiTransitionSource
   fromMode: UiMode
   toMode: UiMode
-  stackBefore: UiMode[]
-  stackAfter: UiMode[]
+  overlay: { id: string; moduleId: string } | null
   reason?: string
   content: {
     texts: number
@@ -42,10 +45,13 @@ export interface UiTransition {
     background: string | null
     characters: number
     panel: string | null
+    overlay: string | null
   }
 }
 
 const UI_LOG_LIMIT = 200
+/** 覆盖层实例序号（模块级，不需要响应式） */
+let overlaySeq = 0
 
 /** 调试开关：开发模式默认开；生产用 localStorage.setItem('etera.uiDebug','1') */
 function uiDebugEnabled(): boolean {
@@ -215,8 +221,8 @@ export interface InputRequest {
 
 interface GameState {
   uiMode: UiMode
-  /** UI 模式栈（v1 PRD push_mode/pop_mode 语义）：子界面返回上一模式 */
-  modeStack: UiMode[]
+  /** 覆盖层实例（P3 Overlay Host）：独立 UI 模块，覆盖在根界面上，不改 uiMode */
+  overlay: OverlayInstance | null
   /** UI 状态转移环形缓冲（最近 200 条；window.__eteraUiLog 可导出） */
   uiTransitions: UiTransition[]
   /** 根界面代际：根切换 +1，用于丢弃过期的异步结果 */
@@ -236,8 +242,6 @@ interface GameState {
   status: StatusData | null
   saves: SaveSlotInfo[]
   toast: string | null
-  /** 当前小游戏（DSL 触发带 requestId 回传；主菜单测试入口无 requestId） */
-  activeMinigame: { gameId: string; requestId: string | null } | null
   /** 文本区是否空闲（无打印、无待确认段落）——选项/输入框只在空闲时出现 */
   textIdle: boolean
   /** 文本推进信号（GameScreen 点击委托递增，TextFlow 监听推进段落） */
@@ -289,7 +293,7 @@ const DEFAULT_WS = 'ws://127.0.0.1:8765'
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
     uiMode: 'main_menu',
-    modeStack: [],
+    overlay: null,
     uiTransitions: [],
     uiEpoch: 0,
     pendingLoadEpoch: null,
@@ -305,7 +309,6 @@ export const useGameStore = defineStore('game', {
     status: null,
     saves: [],
     toast: null,
-    activeMinigame: null,
     textIdle: true,
     textAdvanceTick: 0,
     autoAdvance: false,
@@ -379,7 +382,7 @@ export const useGameStore = defineStore('game', {
     canPersist(state): boolean {
       return state.choice === null
         && state.input === null
-        && state.activeMinigame === null
+        && state.overlay === null
         && state.textIdle
     },
   },
@@ -630,7 +633,7 @@ export const useGameStore = defineStore('game', {
             && this.textFlow.length === 0
             && !this.choice
             && !this.input
-            && !this.activeMinigame) {
+            && !this.overlay) {
           this.enterHub('ws', 'event-rejected')
         }
       })
@@ -706,17 +709,22 @@ export const useGameStore = defineStore('game', {
         }
       })
 
-      // 小游戏触发（DSL minigame.start）：进入 minigame 模式
+      // 小游戏触发（DSL minigame.start）：打开覆盖层，根界面保持不动
       wsClient.on('minigame.start', (m) => {
         // 只允许从叙事界面进入；迟到的启动消息不能把主菜单顶掉
-        if (this.uiMode !== 'game' || this.activeMinigame) {
+        if (this.uiMode !== 'game' || this.overlay) {
           this.logIgnored('minigame.start')
           return
         }
         const p = (m.payload ?? {}) as { game_id?: string }
-        this.activeMinigame = { gameId: p.game_id ?? '', requestId: m.requestId ?? null }
+        this.openOverlay(
+          'minigame',
+          { gameId: p.game_id ?? '' },
+          m.requestId ?? null,
+          'ws',
+          'minigame-start',
+        )
         this.autoAdvance = false
-        this.pushMode('minigame', 'ws', 'minigame-start')
       })
     },
 
@@ -782,46 +790,8 @@ export const useGameStore = defineStore('game', {
       }, 2200)
     },
 
-    /**
-     * 应用一次 UI 状态转移。
-     * 所有 uiMode/modeStack 写入都必须走这里，保证有统一日志可回溯
-     * 「哪一步让界面变成了空壳」。日志保存在最近 200 条环形缓冲。
-     */
-    transitionTo(
-      next: UiModeState,
-      action: UiTransitionAction,
-      source: UiTransitionSource,
-      reason?: string,
-    ): void {
-      const fromMode = this.uiMode
-      const stackBefore = [...this.modeStack]
-      const changed = next.mode !== fromMode
-        || next.stack.length !== stackBefore.length
-        || next.stack.some((m, i) => m !== stackBefore[i])
-
-      if (changed) {
-        this.uiMode = next.mode
-        this.modeStack = [...next.stack]
-      }
-
-      const entry: UiTransition = {
-        time: new Date().toISOString(),
-        action,
-        source,
-        fromMode,
-        toMode: this.uiMode,
-        stackBefore,
-        stackAfter: [...this.modeStack],
-        reason,
-        content: {
-          texts: this.textFlow.length,
-          choices: this.choice?.options.length ?? 0,
-          hasInput: this.input !== null,
-          background: this.background,
-          characters: this.characters.size,
-          panel: this.panel,
-        },
-      }
+    /** 写入一条 UI 转移日志（根切换与覆盖层共用） */
+    recordTransition(entry: UiTransition): void {
       this.uiTransitions.push(entry)
       if (this.uiTransitions.length > UI_LOG_LIMIT) {
         this.uiTransitions.splice(0, this.uiTransitions.length - UI_LOG_LIMIT)
@@ -829,7 +799,42 @@ export const useGameStore = defineStore('game', {
       if (typeof window !== 'undefined') {
         ;(window as unknown as Record<string, unknown>).__eteraUiLog = this.uiTransitions
       }
-      if (changed && uiDebugEnabled()) console.debug('[ui.transition]', entry)
+      if (uiDebugEnabled()) console.debug('[ui.transition]', entry)
+    },
+
+    /** 当前内容的摘要（用于日志取证） */
+    contentSnapshot(): UiTransition['content'] {
+      return {
+        texts: this.textFlow.length,
+        choices: this.choice?.options.length ?? 0,
+        hasInput: this.input !== null,
+        background: this.background,
+        characters: this.characters.size,
+        panel: this.panel,
+        overlay: this.overlay?.moduleId ?? null,
+      }
+    },
+
+    /** 根界面切换：作废待处理读档/事件，代际 +1 */
+    transitionTo(
+      mode: BaseMode,
+      source: UiTransitionSource,
+      reason?: string,
+    ): void {
+      const fromMode = this.uiMode
+      this.uiMode = mode
+      this.recordTransition({
+        time: new Date().toISOString(),
+        action: 'reset',
+        source,
+        fromMode,
+        toMode: mode,
+        overlay: this.overlay
+          ? { id: this.overlay.id, moduleId: this.overlay.moduleId }
+          : null,
+        reason,
+        content: this.contentSnapshot(),
+      })
     },
 
     /** 记录被丢弃的迟到消息（默认只在调试模式打印） */
@@ -837,7 +842,7 @@ export const useGameStore = defineStore('game', {
       if (uiDebugEnabled()) console.debug('[ui] ignored stale message:', kind, detail ?? '')
     },
 
-    /** 根界面切换：清空模式栈、作废待处理的读档、代际 +1 */
+    /** 根界面切换：清空待处理读档/事件、代际 +1、不改变覆盖层 */
     resetMode(
       mode: BaseMode,
       source: UiTransitionSource = 'system',
@@ -846,70 +851,122 @@ export const useGameStore = defineStore('game', {
       this.uiEpoch++
       this.pendingLoadEpoch = null
       this.pendingEvent = null
-      this.transitionTo(resetUiState(mode), 'reset', source, reason)
+      this.transitionTo(mode, source, reason)
     },
 
     /**
-     * 覆盖层入栈（当前只有 minigame）。
-     * 重复入栈是 no-op；根界面不允许走 push。
+     * 打开覆盖层模块（P3 Overlay Host）。
+     * 同一时间只允许一个覆盖层；重复打开直接忽略，避免叠层。
      */
-    pushMode(
-      mode: UiMode,
+    openOverlay(
+      moduleId: string,
+      input: Record<string, unknown>,
+      requestId: string | null,
       source: UiTransitionSource = 'user',
       reason?: string,
-    ): void {
-      if (!isValidUiMode(mode)) {
-        console.warn('[ui] 非法模式，忽略 push:', mode)
-        return
+    ): OverlayInstance | null {
+      if (this.overlay) {
+        console.warn('[ui] 已有覆盖层，忽略重复打开:', moduleId)
+        return null
       }
-      if (isBaseUiMode(mode)) {
-        console.warn('[ui] 根界面请用 resetMode，忽略 push:', mode)
-        return
+      const overlay: OverlayInstance = {
+        id: `overlay-${++overlaySeq}`,
+        moduleId,
+        input,
+        requestId,
       }
-      if (!isOverlayUiMode(mode)) return
-      this.transitionTo(
-        pushUiState({ mode: this.uiMode, stack: this.modeStack }, mode),
-        'push',
+      this.overlay = overlay
+      this.recordTransition({
+        time: new Date().toISOString(),
+        action: 'overlay-open',
         source,
+        fromMode: this.uiMode,
+        toMode: this.uiMode,
+        overlay: { id: overlay.id, moduleId: overlay.moduleId },
         reason,
-      )
+        content: this.contentSnapshot(),
+      })
+      return overlay
     },
 
     /**
-     * 覆盖层出栈。
-     * 空栈是 no-op —— 绝不隐式回退到 'game'（那会得到一个没有内容的空壳）。
+     * 结束覆盖层并（若由 DSL 触发）回传结果。
+     * 幂等：第一次结束后 overlay 清空，重复调用直接忽略。
      */
-    popMode(source: UiTransitionSource = 'user', reason?: string): void {
-      if (this.modeStack.length === 0) {
-        console.warn('[ui] popMode: 模式栈为空，保持当前界面', this.uiMode)
-        this.transitionTo(
-          { mode: this.uiMode, stack: [] },
-          'noop',
-          source,
-          reason ?? 'empty-stack',
-        )
+    completeOverlay(
+      result: Record<string, unknown>,
+      status: OverlayStatus = 'completed',
+      source: UiTransitionSource = 'user',
+      instanceId?: string,
+    ): void {
+      const overlay = this.overlay
+      if (!overlay || (instanceId && overlay.id !== instanceId)) {
+        this.logIgnored('completeOverlay', instanceId)
         return
       }
-      if (isBaseUiMode(this.uiMode)) {
-        console.warn('[ui] popMode: 当前是根界面但栈非空，清空栈', this.modeStack)
-        this.transitionTo(
-          { mode: this.uiMode, stack: [] },
-          'noop',
-          source,
-          reason ?? 'stale-stack',
-        )
-        return
-      }
-      this.transitionTo(
-        popUiState({ mode: this.uiMode, stack: this.modeStack }),
-        'pop',
+      const finalStatus: OverlayStatus =
+        status === 'completed' && result.cancelled === true ? 'cancelled' : status
+      this.overlay = null
+      this.recordTransition({
+        time: new Date().toISOString(),
+        action: 'overlay-close',
         source,
+        fromMode: this.uiMode,
+        toMode: this.uiMode,
+        overlay: { id: overlay.id, moduleId: overlay.moduleId },
+        reason: finalStatus,
+        content: this.contentSnapshot(),
+      })
+
+      if (overlay.requestId) {
+        const payloadResult = finalStatus === 'cancelled'
+          ? { ...result, cancelled: true }
+          : result
+        wsClient.send({
+          type: 'minigame.result',
+          requestId: overlay.requestId,
+          payload: { result: payloadResult },
+        })
+      } else if (finalStatus === 'completed') {
+        this.showToast(result.won ? '小游戏胜利！' : '小游戏结束')
+      }
+      this.autoAdvance = true
+    },
+
+    /** 取消当前覆盖层（DSL 触发时回传 cancelled） */
+    cancelOverlay(
+      source: UiTransitionSource = 'user',
+      reason = 'cancel',
+      instanceId?: string,
+    ): void {
+      if (!this.overlay || (instanceId && this.overlay.id !== instanceId)) {
+        this.logIgnored('cancelOverlay', instanceId)
+        return
+      }
+      this.completeOverlay({ cancelled: true }, 'cancelled', source, instanceId)
+      if (uiDebugEnabled()) console.debug('[ui] overlay cancelled:', reason)
+    },
+
+    /** 静默清理覆盖层（重启/回 Hub/回主菜单时；不发结果，脚本会被 abort） */
+    clearOverlay(source: UiTransitionSource, reason: string): void {
+      const overlay = this.overlay
+      if (!overlay) return
+      this.overlay = null
+      this.recordTransition({
+        time: new Date().toISOString(),
+        action: 'overlay-close',
+        source,
+        fromMode: this.uiMode,
+        toMode: this.uiMode,
+        overlay: { id: overlay.id, moduleId: overlay.moduleId },
         reason,
-      )
+        content: this.contentSnapshot(),
+      })
     },
 
     /** 开始新游戏 */
     startGame(): void {
+      this.clearOverlay('user', 'start-game')
       this.resetMode('game', 'user', 'start-game')
       this.textFlow = []
       this.choice = null
@@ -917,7 +974,6 @@ export const useGameStore = defineStore('game', {
       this.background = null
       this.cgImage = null
       this.characters.clear()
-      this.activeMinigame = null
       this.panel = null
       this.detailChar = null
       this.eventFinished = false
@@ -925,8 +981,9 @@ export const useGameStore = defineStore('game', {
       wsClient.send({ type: 'game.start' })
     },
 
-    /** 返回主菜单（清内容/栈 + 通知后端中止挂起脚本，释放游戏线程） */
+    /** 返回主菜单（清内容/覆盖层 + 通知后端中止挂起脚本，释放游戏线程） */
     backToMenu(): void {
+      this.clearOverlay('user', 'back-to-menu')
       this.resetMode('main_menu', 'user', 'back-to-menu')
       this.textFlow = []
       this.choice = null
@@ -934,7 +991,6 @@ export const useGameStore = defineStore('game', {
       this.background = null
       this.cgImage = null
       this.characters.clear()
-      this.activeMinigame = null
       this.panel = null
       this.detailChar = null
       this.giftChar = null
@@ -1073,11 +1129,11 @@ export const useGameStore = defineStore('game', {
       source: UiTransitionSource = 'user',
       reason = 'enter-hub',
     ): void {
+      this.clearOverlay(source, 'enter-hub')
       this.resetMode('hub', source, reason)
       this.textFlow = []
       this.choice = null
       this.input = null
-      this.activeMinigame = null
       this.eventFinished = false
       this.background = null
       this.cgImage = null
@@ -1168,50 +1224,23 @@ export const useGameStore = defineStore('game', {
 
     openMinigame(): void {
       // 主菜单测试入口（无 requestId，结果不回传脚本）
-      this.activeMinigame = { gameId: 'slime_battle', requestId: null }
-      this.pushMode('minigame', 'user', 'minigame-test')
+      this.openOverlay(
+        'minigame',
+        { gameId: 'slime_battle' },
+        null,
+        'user',
+        'minigame-test',
+      )
     },
 
-    /**
-     * 小游戏结束：回传结果给后端（DSL 触发时）并返回上一模式。
-     * 幂等：双击「返回」/重复 finish 只处理第一次，避免二次 pop 进空壳。
-     */
+    /** 兼容旧调用：小游戏结束统一走 completeOverlay（幂等） */
     finishMinigame(result: Record<string, unknown>): void {
-      const mg = this.activeMinigame
-      if (!mg) {
-        this.logIgnored('finishMinigame')
-        return
-      }
-      if (mg.requestId) {
-        wsClient.send({
-          type: 'minigame.result',
-          requestId: mg.requestId,
-          payload: { result },
-        })
-      } else {
-        this.showToast(result.won ? '小游戏胜利！' : '小游戏结束')
-      }
-      this.activeMinigame = null
-      this.popMode('user', 'minigame-finish')
-      this.autoAdvance = true // 小游戏结束后对话自动播放
+      this.completeOverlay(result, 'completed', 'user')
     },
 
-    /** 小游戏找不到组件/中途取消：回传 cancelled（若是 DSL 触发）后再出栈 */
+    /** 兼容旧调用：小游戏取消统一走 cancelOverlay */
     cancelMinigame(): void {
-      const mg = this.activeMinigame
-      if (!mg) {
-        this.logIgnored('cancelMinigame')
-        return
-      }
-      if (mg.requestId) {
-        wsClient.send({
-          type: 'minigame.result',
-          requestId: mg.requestId,
-          payload: { result: { cancelled: true } },
-        })
-      }
-      this.activeMinigame = null
-      this.popMode('user', 'minigame-cancel')
+      this.cancelOverlay('user', 'minigame-cancel')
     },
 
     saveToSlot(slotId: number): void {

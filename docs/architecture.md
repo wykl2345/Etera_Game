@@ -336,39 +336,45 @@ frontend/
 │   │   └── client.ts          # WS 封装：消息路由、requestId 匹配、断线重连
 │   ├── stores/
 │   │   ├── game.ts            # 游戏状态（来自 status.sync 快照）
-│   │   └── uiMode.ts          # UI 模式栈（继承 v1 PRD）
+│   │   └── uiMode.ts          # 根界面类型/校验（P3 后不再有模式栈）
 │   ├── components/
 │   │   ├── TextFlow/          # 终端风格文本流（逐字打印、颜色标签）
 │   │   ├── ChoiceMenu/        # 选项按钮（嵌入文本流）
 │   │   ├── CharacterLayer/    # 立绘层（淡入淡出）
 │   │   ├── BackgroundLayer/   # 背景层
 │   │   ├── StatusBar/         # 状态栏（天数/时段/金钱/HP/MP）
+│   │   ├── OverlayHost/       # 覆盖层宿主（P3）
 │   │   └── MainMenu/          # 主菜单
-│   └── games/                 # 小游戏挂载点（Canvas 组件）
+│   ├── overlays/              # 覆盖层模块注册表（小游戏等）
+│   └── games/                 # 小游戏 Canvas 组件
 ```
 
-### 6.2 UI 状态机（根界面 + 覆盖层）
+### 6.2 UI 状态机（根界面 + Overlay Host + 系统面板）
 
-v1 的 `push_mode/pop_mode` 在 Web 端被拆成三层，避免"切页面后只剩空壳"：
+P3 起 UI 分成三层；覆盖层不再是“伪装成根界面的模式”，主界面始终挂载：
 
 | 层 | 状态 | 取值 | 说明 |
 |---|---|---|---|
 | **根界面** | `uiMode` | `main_menu` / `hub` / `game` | 唯一的页面级切换 |
-| **覆盖层** | `modeStack` | 当前只有 `minigame` | 压栈时保存被覆盖的根界面 |
+| **覆盖层** | `overlay` | `{ id, moduleId, input, requestId }` | 独立 UI 模块（小游戏是第一个），覆盖在根界面上 |
 | **系统面板** | `panel` | save / load / settings / characters / shop / gift / inventory | 悬浮在当前界面上，**不改 `uiMode`** |
 
-约束（`frontend/src/stores/uiMode.ts`）：
+约束（`frontend/src/stores/uiMode.ts` + `stores/game.ts`）：
 
-1. 根切换统一走 `resetMode()`，并清空模式栈。
-2. `pushMode()` 只接受覆盖层；重复压入同一模式是 no-op。
-3. **空栈 `popMode()` 是 no-op**，绝不隐式回退到 `game`——那会得到一个没有内容的空壳。
-4. 所有 `uiMode` / `modeStack` 写入都走 `transitionTo()`，记录最近 200 条状态转移
-   （`window.__eteraUiLog` 可导出；生产环境用 `localStorage.etera.uiDebug=1` 打印到控制台）。
+1. 根切换统一走 `resetMode()`；没有模式栈，也没有“返回到上一模式”的隐式回退。
+2. 覆盖层用 `openOverlay()` 打开；同一时间只允许一个；打开/关闭不改变 `uiMode`。
+3. 模块通过 `complete(result)` / `cancel()` 交回结果；store 负责幂等关闭、`requestId` 回传与
+   **实例 id 校验**（旧模块的迟到回调不能关闭新覆盖层）。
+4. 根切换与覆盖层打开/关闭都写入最近 200 条转移日志（`action: reset / overlay-open / overlay-close`，
+   带 `overlay.id/moduleId`）；`window.__eteraUiLog` 可导出，生产环境
+   `localStorage.etera.uiDebug=1` 打印控制台。
 5. 异步消息带界面代际/模式校验：读档用 `pendingLoadEpoch`，剧本结束用 `pendingEvent`
-   （事件名 + 代际），睡觉/`minigame.start` 校验当前模式；迟到消息直接丢弃，不允许旧结果覆盖新界面。
-6. 运行时遇到未知模式，渲染「界面状态异常」恢复页（回行动界面 / 回主菜单），不再静默空壳。
+   （事件名 + 代际），睡觉/`minigame.start` 校验当前模式；迟到消息直接丢弃。
+6. 运行时遇到未知根模式，渲染「界面状态异常」恢复页（回行动界面 / 回主菜单），不再静默空壳。
 
-详见 `docs/adr/0008-ui-state-machine.md`；回归用例见 `frontend/src/stores/game.test.ts`。
+模块注册表：`frontend/src/overlays/index.ts`（当前只有 `minigame` → `MinigameHost`）。
+决策：`docs/adr/0008-ui-state-machine.md`、`docs/adr/0009-overlay-host.md`；
+回归用例：`frontend/src/stores/game.test.ts`。
 
 ### 6.3 终端风格主题
 
@@ -377,7 +383,8 @@ v1 的 `push_mode/pop_mode` 在 Web 端被拆成三层，避免"切页面后只�
 
 ### 6.4 小游戏扩展（性能约束）
 
-- 小游戏 = 独立 Canvas 组件，挂载到 `games/`，自有 `requestAnimationFrame` 渲染循环
+- 小游戏 = Overlay Host 的独立模块（`overlays/index.ts` 注册），渲染组件在 `games/`，
+  自有 `requestAnimationFrame` 渲染循环；主界面保持挂载
 - Vue 只做外壳与状态桥接（进入/退出模式、得分回写 GameContext）
 - 卡牌/肉鸽战斗逻辑全部 Canvas 2D 实现，主框架零干扰——**这是选 Vue 而非游戏引擎的原因：主 UI 是文本冒险，小游戏是附加能力，两者解耦**
 

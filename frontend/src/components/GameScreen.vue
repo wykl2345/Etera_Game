@@ -9,7 +9,6 @@ import CharacterLayer from './CharacterLayer.vue'
 import TextFlow from './TextFlow.vue'
 import ChoiceMenu from './ChoiceMenu.vue'
 import InputOverlay from './InputOverlay.vue'
-import MinigameHost from './MinigameHost.vue'
 
 const store = useGameStore()
 const { uiMode, toast, cgImage } = storeToRefs(store)
@@ -28,7 +27,7 @@ watch(cgImage, () => { cgFailed.value = false })
     <!-- 叙事层：只在叙事/小游戏模式渲染。
          系统界面（存档/读档/设置）是全屏面板，若后面还留着叙事层，半透明
          背景会透出空文本区的 —— 占位符，看起来像"奇怪的缓存页"。 -->
-    <template v-if="uiMode === 'game' || uiMode === 'minigame'">
+    <template v-if="uiMode === 'game'">
       <StatusBar />
 
       <BackgroundLayer />
@@ -89,13 +88,12 @@ watch(cgImage, () => { cgFailed.value = false })
       </div>
     </template>
 
-    <!-- save/load/settings 已上移到 App.vue 作为悬浮面板，不再在此渲染 -->
-    <MinigameHost v-if="uiMode === 'minigame'" />
+    <!-- 系统面板与覆盖层模块（小游戏）由 App.vue 的宿主渲染，不在此处 -->
 
     <!-- 兜底：任何未知/非法模式都不要渲染成“只有主题色的空壳”，
          给出可见错误与返回路径（正常情况下不会出现）。 -->
     <div
-      v-if="uiMode !== 'game' && uiMode !== 'minigame'"
+      v-if="uiMode !== 'game'"
       class="ui-broken"
       @click.stop
     >

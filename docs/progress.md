@@ -20,12 +20,12 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 后端引擎核心 | **97%** | 两级场景（区域→地点）+ 数据驱动物品/商店目录， Lua 沙箱（lupa54 + 安全限制 + Mock 降级）、53 指令 API 白名单、线程池调度器（Future 挂起/恢复）、事件总线（支持剧本声明 priority）、分层状态（core 保护）、剧本加载、GameContext 序列化 |
 | 后端存档系统 | **94%** | 版本化 JSON（2.0.0）+ 迁移链（1.0→2.0）+ 原子写入 + 备份 + 20 槽 + 快速存档 + **对话快照**（读档还原文本/背景/立绘）；断线恢复未做（记录意图） |
 | WS 网关/协议 | **93%** | 场景移动（`game.move`）/ 睡觉（`game.sleep`）/ 行动成本判定， 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息、`game.emit_event`（前端主动触发剧本）、存读档一致性校验（对话中拒绝存读档）；无断线重连 |
-| 前端叙事界面 | **88%** | 全屏 CG 特写（ui.cg）、行间停顿节奏控制， 文本流（逐字打印 + 段落点击推进 + 快进）、选项、立绘/背景占位、输入、小游戏触发 |
-| 前端系统界面 | **90%** | **Hub 行动枢纽**（角色卡片 + 剧本注册的行动按钮 + 数值条件锁定）、主菜单、状态栏、存档界面、设置面板（localStorage）；**UI 状态机**（根界面 + panel 覆盖层 + 空壳防护，ADR-0008） |
+| 前端叙事界面 | **90%** | 全屏 CG 特写（ui.cg）、行间停顿节奏控制， 文本流（逐字打印 + 段落点击推进 + 快进）、选项、真实立绘/背景、输入、小游戏覆盖层触发 |
+| 前端系统界面 | **92%** | **Hub 行动枢纽**（角色卡片 + 剧本注册的行动按钮 + 数值条件锁定）、主菜单、状态栏、存档界面、设置面板（localStorage）；**UI 状态机**（根界面 + Overlay Host + panel + 空壳防护，ADR-0008/0009） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
 | 内容资产 | **42%** | 14 个 Lua 剧本：灵梦完整主线（4 段突破 + 送礼 + 闲聊/修行/早晨）、魔理沙基础互动、日常事件、序章、自检：序章 / 咖啡店 / 蘑菇事件 / **早晨问候（每日）** / 演示 + DSL 自检；日常事件链已跑通（day 2 起每天早晨 + day≥3 蘑菇 + day≥5 咖啡店）；**图片素材 16/16 已重制**（立绘/头像/背景/CG + 1 张额外 CG，2026-11-03，`process_sprite.py` / `process_scene.py`）；音频全空 |
-| 测试 | **96%** | 后端 162 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端 14 项 store 测试（Vitest：模式栈/迟到消息/事件匹配/读档面板/转移日志）；e2e-check.mjs 仍为手工联调 |
-| 文档体系 | **93%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×8 / DSL 契约 / 美术提示词包 / 美术素材待办 / planning |
+| 测试 | **96%** | 后端 162 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端 19 项 store 测试（Vitest：Overlay 生命周期/迟到实例/迟到消息/事件匹配/读档面板/转移日志）；e2e-check.mjs 仍为手工联调 |
+| 文档体系 | **94%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×9 / DSL 契约 / 美术提示词包 / 美术素材待办 / planning |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~15%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补音频 / 加小游戏）。
 
@@ -71,7 +71,8 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 存档界面白色滚动条/横条 | 白底粗轨道 + 不该有的横滚条 | 自定义细线滚动条（透明 track）+ `overflow-x: hidden` |
 | 对话中途存档存出半截画面 | 存档只序列化后端 GameContext，对话/立绘/选项在前端 store，读档后数据对不上画面 | 服务端 `_persist_blocked` 强制拒绝 + 前端按钮按 `canPersist` 置灰，只在脚本空闲时可存读档 |
 | 读档后只剩 `——` 空屏 | 空文本区占位符（`TextFlow.vue`）+ 读档只 `deserialize` 数据，画面从未存过 | 存档增加 `dialogue` 段（DialogueRecorder 记录画面类消息），读档后前端 `restoreDialogue` 重放；`restoring` 标志让文本直接铺满不重播逐字 |
-| 模式栈空栈 pop 回退 `game` | 小游戏重复 finish / 额外 pop 后进入只有 `——` 的空壳 | 空栈 pop 改 no-op；`finishMinigame` 幂等；根界面/覆盖层拆分（ADR-0008） |
+| 模式栈空栈 pop 回退 `game` | 小游戏重复 finish / 额外 pop 后进入只有 `——` 的空壳 | 空栈 pop 改 no-op；`finishMinigame` 幂等；P3 进一步把小游戏迁到 Overlay Host、删除模式栈（ADR-0008/0009） |
+| 小游戏切换整页导致主菜单卸载 | `uiMode='minigame'` 时 MainMenu/Hub 被替换，关闭依赖 pop | P3 Overlay Host：根界面保持挂载，`overlay` 管理模块生命周期 |
 | 迟到的 WS 结果覆盖新界面 | 睡觉/读档/`event.done`/`minigame.start` 在回主菜单后到达，把界面切进空 game | 模式与代际校验（`pendingLoadEpoch`/`uiEpoch`），迟到消息丢弃 |
 | Hub 行动被后端拒绝后停在空 game | `chooseHubButton` 已清空内容并切到 game，`event.result` 失败只弹 toast | 失败且无内容时回收 `enterHub()` |
 | 读档成功后面板不关闭 | load 面板继续盖在游戏/Hub 上 | `load.result` 成功后清 `panel` / `detailChar` |
@@ -137,13 +138,14 @@ git show pre-web-refactor:tests/test_event_bus.py
 - ~~日常事件在真实游玩中无法触发~~：已补工具条「下一天」按钮（`game.day_advance`），
   并新增每日早晨问候剧本；door 见 `docs/architecture.md`
 - **挂起中重启的日志噪音**：`Future exception was never retrieved`，功能正常但应吞掉（见踩坑表）
-- **前端自动化测试**：store 层 14 项（`cd frontend && npm test`）；组件/E2E 仍以 `e2e-check.mjs` 手工联调为主
+- **前端自动化测试**：store 层 19 项（`cd frontend && npm test`）；组件/E2E 仍以 `e2e-check.mjs` 手工联调为主
 - **小游戏**：仅 1 个原型；肉鸽（杀戮尖塔式）未开始
+- **P4 未做**：Overlay Host 已支持小游戏，但还没有非小游戏模块 + 独立最小 Mod 复用同一份契约
 - **设置面板**：音频音量已接（WebAudio），但无真实素材验证
 - **性能预留**：小游戏 Canvas 独立层已验证（ADR-0005），大规模场景未压测
 
 ## 六、下一步建议
 
-1. **内容创作**：扩充 Lua 剧本（日常事件、主线、好感度剧情）+ 按 `docs/美术提示词.md` 用 ChatGPT Plus 重制立绘/背景/CG
-2. **小游戏生态**：以注册表 + `minigame.start` DSL 为基础，新增 1-2 个小游戏
+1. **内容创作**：扩充 Lua 剧本（日常事件、主线、好感度剧情）+ 补音频素材
+2. **P4 架构验证**：注册一个非小游戏 Overlay 模块 + 独立最小 Mod，复用 `input/complete/cancel` 契约
 3. **打磨**：文字特效（震动/渐变）、音频素材接入验证、断线恢复评估
