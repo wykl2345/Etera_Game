@@ -3,8 +3,26 @@
 不属于游戏内容的开发辅助脚本。
 
 > **美术出图已改用 ChatGPT Plus**（2026-11），提示词见 `docs/美术提示词.md`。
-> `comfyui_generate.py` / `process_assets.py` 是本地 ComfyUI 时期的遗留脚本，保留备查、不再作为主流程；
-> 其中 `process_assets.py` 的 rembg 抠图逻辑仍可用于 ChatGPT 产出的纯色底立绘。
+> `comfyui_generate.py` / `process_assets.py` 是本地 ComfyUI 时期的遗留脚本，保留备查、不再作为主流程。
+> 当前立绘后处理用 `process_sprite.py`（见下）。
+
+## 立绘去背 / 规范化
+
+`process_sprite.py` 把 ChatGPT 产出的立绘处理成引擎规格：
+
+- **RGB / 全不透明**（常见白底或“棋盘格透明”被烘焙进图）→ rembg `isnet-anime` 去背
+- **已有 alpha** → 跳过 rembg，只清低 alpha 噪点
+- 统一缩放到 `1200×1800` RGBA，输出到 `resources/images/characters/{char}/{expr}.png`
+- 比例不是 2:3 会直接拒绝，避免拉伸
+
+```bash
+.venv/bin/python tools/process_sprite.py \
+  --char reimu --expr serious \
+  --src incoming/art/characters/reimu/serious.png --force
+```
+
+首次运行会把 `isnet-anime` 模型（约 176MB）下载到 `.rembg-models/`（已 gitignore）。
+验收与归档走 `docs/美术素材待办.md`。
 
 ## DSL 全指令自检
 

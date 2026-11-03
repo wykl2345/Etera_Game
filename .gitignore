@@ -23,3 +23,7 @@ incoming/
 # 测试/安装缓存
 .npm-cache/
 coverage/
+
+# rembg 模型缓存 / 临时预览
+.rembg-models/
+.tmp-*/
