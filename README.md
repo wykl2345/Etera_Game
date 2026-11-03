@@ -16,8 +16,10 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 | `docs/requirements.md` | ★ 正式 PRD：Phase 1-4 需求条目 + 验收标准（开发按此逐条实现） |
 | `docs/references.md` | 官方文档链接 + 版本坑位 + v1 源码查阅方法 |
 | `docs/progress.md` | 开发进度：完成度评估 + 踩坑记录 + git 留档版本 |
-| `docs/美术资源规范.md` | 美术资源规格：目录/命名/尺寸/表情清单 + ComfyUI 生成参数 |
-| `docs/adr/` | 决策记录 0001-0006 |
+| `docs/美术资源规范.md` | 美术资源规格：目录/命名/尺寸/表情清单 + ChatGPT 出图流程 |
+| `docs/美术提示词.md` | ★ 可直接粘贴的 ChatGPT Plus 提示词包（角色设定/立绘/背景/CG） |
+| `docs/planning/` | 阶段性设计共识 + UI 默认空壳 Bug 研究（后续路线的事实来源） |
+| `docs/adr/` | 决策记录 0001-0007 |
 | `DSL.txt` | Mod 契约：53 个 Lua 指令（协议基准，不得变更语义） |
 | `docs/archive/v1/` | v1 文档归档（含 UI 模式栈 PRD；完整源码见 git tag `pre-web-refactor`） |
 
@@ -46,4 +48,5 @@ cd frontend && npm install && npm run dev   # Phase 2 后可用
 - ✅ **Phase 3 完成**：存档系统（迁移链/备份/20 槽）+ 状态栏（status.sync）+ 存档界面 + UI 模式栈（commit 3ed2335）
 - ✅ **Phase 4 完成**：逐字打印 + 设置面板 + WebAudio 音频 + 小游戏 Canvas 原型（史莱姆回合制，commit 25acf53）
 - 🎯 路线图 4 个 Phase 全部完成，进入内容创作阶段（Lua 剧本 / 美术素材）
+- 🎨 美术生产改为 ChatGPT Plus + 提示词包（`docs/美术提示词.md`），本地 ComfyUI 流水线归档（ADR-0007）
 

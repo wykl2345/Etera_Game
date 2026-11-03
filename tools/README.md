@@ -2,6 +2,10 @@
 
 不属于游戏内容的开发辅助脚本。
 
+> **美术出图已改用 ChatGPT Plus**（2026-11），提示词见 `docs/美术提示词.md`。
+> `comfyui_generate.py` / `process_assets.py` 是本地 ComfyUI 时期的遗留脚本，保留备查、不再作为主流程；
+> 其中 `process_assets.py` 的 rembg 抠图逻辑仍可用于 ChatGPT 产出的纯色底立绘。
+
 ## DSL 全指令自检
 
 把覆盖全部 DSL 指令的剧本跑一遍，逐条断言返回值，输出 `[OK]/[NG]` 报告。**两种触发方式，跑的是同一个剧本、同一条事件**：
