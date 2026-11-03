@@ -16,3 +16,6 @@ dist/
 
 # 运行时数据
 saves/
+
+# 待验收的图片上传（验收后归档进 resources/）
+incoming/
