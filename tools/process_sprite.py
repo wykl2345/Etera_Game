@@ -25,7 +25,7 @@ import argparse
 import os
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TARGET = (1200, 1800)
@@ -90,6 +90,8 @@ def main() -> int:
     parser.add_argument("--alpha-floor", type=int, default=8, help="低于该值的 alpha 清零")
     parser.add_argument("--opaque-at", type=int, default=253, help="高于该值的 alpha 拉满 255")
     parser.add_argument("--no-rembg", action="store_true", help="强制不去背（输入必须已有 alpha）")
+    parser.add_argument("--padding", type=int, default=0,
+                        help="四周透明安全区像素（头像建议 8，默认 0）")
     parser.add_argument("--force", action="store_true", help="覆盖已存在的输出")
     args = parser.parse_args()
 
@@ -98,7 +100,12 @@ def main() -> int:
         print(f"[×] 输入不存在：{src}")
         return 1
 
-    out_dir = Path(args.out) if args.out else ROOT / "resources" / "images" / "characters" / args.char
+    if args.out:
+        out_dir = Path(args.out)
+        if not out_dir.is_absolute():
+            out_dir = ROOT / out_dir
+    else:
+        out_dir = ROOT / "resources" / "images" / "characters" / args.char
     out = out_dir / f"{args.expr}.png"
     if out.exists() and not args.force:
         print(f"[×] 已存在：{out.relative_to(ROOT)}（加 --force 覆盖）")
@@ -115,7 +122,7 @@ def main() -> int:
             print("[×] 输入没有有效 alpha，但指定了 --no-rembg")
             return 1
         else:
-            print(f"没有有效 alpha → rembg {args.model}（首次会下载模型）…")
+            print(f"没有有效 alpha → rembg {args.model}（模型已缓存则直接加载）…")
             im = remove_background(im, args.model)
             print(f"去背完成：{im.width}x{im.height} RGBA")
 
@@ -130,6 +137,20 @@ def main() -> int:
 
         if im.size != target:
             im = im.resize(target, Image.Resampling.LANCZOS)
+
+        if args.padding > 0:
+            pad = args.padding
+            inner_w, inner_h = target[0] - 2 * pad, target[1] - 2 * pad
+            if inner_w <= 0 or inner_h <= 0:
+                print("[×] padding 过大")
+                return 1
+            inner = ImageOps.contain(im, (inner_w, inner_h), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", target, (0, 0, 0, 0))
+            canvas.alpha_composite(
+                inner,
+                ((target[0] - inner.width) // 2, (target[1] - inner.height) // 2),
+            )
+            im = canvas
 
     out.parent.mkdir(parents=True, exist_ok=True)
     im.save(out, "PNG", optimize=True)

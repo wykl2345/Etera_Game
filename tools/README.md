@@ -21,8 +21,36 @@
   --src incoming/art/characters/reimu/serious.png --force
 ```
 
+头像用同一脚本，指定输出目录、尺寸和安全区：
+
+```bash
+.venv/bin/python tools/process_sprite.py \
+  --char marisa --expr normal \
+  --src incoming/art/avatars/marisa/normal.png \
+  --out resources/images/avatars/marisa --size 512x512 --padding 8 --force
+```
+
 首次运行会把 `isnet-anime` 模型（约 176MB）下载到 `.rembg-models/`（已 gitignore）。
 验收与归档走 `docs/美术素材待办.md`。
+
+## 背景 / CG 规范化
+
+`process_scene.py` 把背景和 CG 裁成 16:9 并缩放到 1920×1080，**不做去背**：
+
+```bash
+# 背景
+.venv/bin/python tools/process_scene.py \
+  --kind background --name shrine \
+  --src incoming/art/backgrounds/shrine.png --force
+
+# CG（--check-only 只检查分辨率/比例，不写文件）
+.venv/bin/python tools/process_scene.py \
+  --kind cg --name reimu_01_afternoon \
+  --src incoming/art/cg/reimu_01_afternoon.png --check-only
+```
+
+输出到 `resources/images/backgrounds/{name}.png` / `resources/images/cg/{name}.png`。
+裁剪保留上半部（下缘会被文本框遮住），统一不透明 PNG。
 
 ## DSL 全指令自检
 
