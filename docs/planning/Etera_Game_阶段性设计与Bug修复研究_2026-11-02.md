@@ -1,10 +1,14 @@
 # Etera_Game 阶段性设计共识与 UI 空界面 Bug 修复研究
 
-> 文档版本：v0.1（讨论整理稿）  
-> 日期：2026-11-02  
-> 项目：https://github.com/wykl2345/Etera_Game  
-> 建议归档路径：`docs/planning/eteragame-stage-review-2026-11-02.md`  
-> 状态：架构方向已讨论；Bug 根因**未确认**，需要源码与运行日志验证。
+> 文档版本：v0.2（讨论整理稿 + 修复进展）
+>
+> 日期：2026-11-02（修复进展：2026-11-03）
+>
+> 项目：https://github.com/wykl2345/Etera_Game
+>
+> 建议归档路径：`docs/planning/eteragame-stage-review-2026-11-02.md`
+>
+> 状态：架构方向已讨论；已定位并修复多条空壳路径，见文末 §10。
 
 ## 0. 执行摘要
 
@@ -319,3 +323,29 @@ Application Shell（主题、背景、公共容器，常驻）
 - README：https://github.com/wykl2345/Etera_Game/blob/main/README.md
 - 现有内部参考：`DSL.txt`、`docs/architecture.md`、`docs/progress.md`、`docs/adr/`、`CONTEXT.md`。
 - 本文属于**讨论产物和 Bug 研究计划**。建议先放在 `docs/planning/`，根因证实后将架构决策沉淀进 `docs/adr/`，再更新正式 PRD 与进度记录。
+
+## 10. 修复进展（2026-11-03）
+
+按本文 §5 的排查顺序，已定位并修复以下可进入空壳的路径：
+
+| 路径 | 根因 | 修复 |
+|---|---|---|
+| 额外 pop / 重复退出小游戏 | `popMode()` 空栈时回退到 `game` | 空栈 no-op；`finishMinigame` 幂等；小游戏取消走 `cancelMinigame()` |
+| 睡觉结果迟到 | 玩家回主菜单后 `sleep.result` 仍切到 game 并清空画面 | 只在 `hub` 处理；其余视为过期消息 |
+| 读档结果迟到 | 读档异步返回时界面已切走 | `pendingLoadEpoch`/`uiEpoch` 代际校验，过期丢弃 |
+| 事件结束迟到 | abort 后脚本 `finally` 仍发 `event.done`，把主菜单顶成 Hub；旧事件 done 会结束新事件 | 只在 `game` 处理；`pendingEvent`（事件名 + 代际）匹配才接受 |
+| 小游戏启动迟到 | `minigame.start` 在主菜单到达 | 只在 `game` 且无活动小游戏时处理 |
+| Hub 行动被拒 | 前端已切 game 并清空内容，失败只弹 toast | 无内容时回收 `enterHub()` |
+| 读档面板未关闭 | `load.result` 成功后 `panel='load'` 残留 | 成功后清 `panel`/`detailChar` |
+| 未知模式空白页 | `App.vue` 落到无匹配分支的 GameScreen | 渲染「界面状态异常」恢复页 |
+| 自检从 Hub 触发 | 剧本先弹选项，但 Hub 不渲染 ChoiceMenu | `runSelftest()` 先切叙事界面 |
+
+**状态转移日志**：所有 `uiMode`/`modeStack` 写入统一走 `transitionTo()`，保留最近 200 条，
+`window.__eteraUiLog` 可导出；生产环境 `localStorage.etera.uiDebug=1` 打开控制台输出。
+
+**回归**：`frontend/src/stores/game.test.ts` 14 项（`cd frontend && npm test`）；
+真实 Chromium 中连点小游戏「返回」验证不再进入空壳；后端 162 项测试不受影响。
+决策：`docs/adr/0008-ui-state-machine.md`；架构：`docs/architecture.md` §6.2。
+
+**仍未完成**：玩家现场的最小复现录像/日志（若再次出现，导出 `window.__eteraUiLog`）；
+完整 Overlay Host 抽象（第三方模块契约）仍按 §3.3/§5.5 后续推进，本次只做面板化与状态机加固。

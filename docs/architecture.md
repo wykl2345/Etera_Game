@@ -347,20 +347,28 @@ frontend/
 │   └── games/                 # 小游戏挂载点（Canvas 组件）
 ```
 
-### 6.2 UI 模式栈（继承 v1 PRD）
+### 6.2 UI 状态机（根界面 + 覆盖层）
 
-v1 的 `push_mode/pop_mode/reset_mode` 思路在 Web 端天然成立，直接用 Pinia 实现：
+v1 的 `push_mode/pop_mode` 在 Web 端被拆成三层，避免"切页面后只剩空壳"：
 
-| 模式 | 状态栏 | 说明 |
-|---|---|---|
-| `main_menu` | 隐藏 | 标题界面 |
-| `game` | 显示 | 游戏进行中 |
-| `settings` | 隐藏 | 设置面板 |
-| `save` / `load` | 隐藏 | 存档界面 |
-| `character_detail` | 隐藏 | 角色详情弹窗 |
-| `minigame` | 隐藏 | 小游戏（预留） |
+| 层 | 状态 | 取值 | 说明 |
+|---|---|---|---|
+| **根界面** | `uiMode` | `main_menu` / `hub` / `game` | 唯一的页面级切换 |
+| **覆盖层** | `modeStack` | 当前只有 `minigame` | 压栈时保存被覆盖的根界面 |
+| **系统面板** | `panel` | save / load / settings / characters / shop / gift / inventory | 悬浮在当前界面上，**不改 `uiMode`** |
 
-详见 `docs/archive/v1/status-bar-mode-stack/PRD.md`，规则表可直接照搬。
+约束（`frontend/src/stores/uiMode.ts`）：
+
+1. 根切换统一走 `resetMode()`，并清空模式栈。
+2. `pushMode()` 只接受覆盖层；重复压入同一模式是 no-op。
+3. **空栈 `popMode()` 是 no-op**，绝不隐式回退到 `game`——那会得到一个没有内容的空壳。
+4. 所有 `uiMode` / `modeStack` 写入都走 `transitionTo()`，记录最近 200 条状态转移
+   （`window.__eteraUiLog` 可导出；生产环境用 `localStorage.etera.uiDebug=1` 打印到控制台）。
+5. 异步消息带界面代际/模式校验：读档用 `pendingLoadEpoch`，剧本结束用 `pendingEvent`
+   （事件名 + 代际），睡觉/`minigame.start` 校验当前模式；迟到消息直接丢弃，不允许旧结果覆盖新界面。
+6. 运行时遇到未知模式，渲染「界面状态异常」恢复页（回行动界面 / 回主菜单），不再静默空壳。
+
+详见 `docs/adr/0008-ui-state-machine.md`；回归用例见 `frontend/src/stores/game.test.ts`。
 
 ### 6.3 终端风格主题
 

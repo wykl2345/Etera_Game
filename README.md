@@ -20,7 +20,7 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 | `docs/美术提示词.md` | ★ 可直接粘贴的 ChatGPT Plus 提示词包（角色设定/立绘/背景/CG） |
 | `docs/美术素材待办.md` | ★ 图片素材待办/验收/归档表（唯一状态表） |
 | `docs/planning/` | 阶段性设计共识 + UI 默认空壳 Bug 研究（后续路线的事实来源） |
-| `docs/adr/` | 决策记录 0001-0007 |
+| `docs/adr/` | 决策记录 0001-0008 |
 | `DSL.txt` | Mod 契约：53 个 Lua 指令（协议基准，不得变更语义） |
 | `docs/archive/v1/` | v1 文档归档（含 UI 模式栈 PRD；完整源码见 git tag `pre-web-refactor`） |
 
@@ -38,6 +38,7 @@ python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 
 # 前端（Node ≥24，已装于 ~/.local）
 cd frontend && npm install && npm run dev   # Phase 2 后可用
+cd frontend && npm test                     # store 状态机回归（Vitest）
 ```
 
 ## 迁移状态
@@ -50,4 +51,5 @@ cd frontend && npm install && npm run dev   # Phase 2 后可用
 - ✅ **Phase 4 完成**：逐字打印 + 设置面板 + WebAudio 音频 + 小游戏 Canvas 原型（史莱姆回合制，commit 25acf53）
 - 🎯 路线图 4 个 Phase 全部完成，进入内容创作阶段（Lua 剧本 / 美术素材）
 - 🎨 美术生产改为 ChatGPT Plus + 提示词包（`docs/美术提示词.md`），本地 ComfyUI 流水线归档（ADR-0007）
+- 🧭 UI 状态机加固：根界面 + 覆盖层，空栈 pop / 迟到消息等空壳路径已修复（ADR-0008）
 

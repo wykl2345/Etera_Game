@@ -21,11 +21,11 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 后端存档系统 | **94%** | 版本化 JSON（2.0.0）+ 迁移链（1.0→2.0）+ 原子写入 + 备份 + 20 槽 + 快速存档 + **对话快照**（读档还原文本/背景/立绘）；断线恢复未做（记录意图） |
 | WS 网关/协议 | **93%** | 场景移动（`game.move`）/ 睡觉（`game.sleep`）/ 行动成本判定， 单连接单会话、queue 串行发送、requestId 机制、status.sync 推送、存档/小游戏消息、`game.emit_event`（前端主动触发剧本）、存读档一致性校验（对话中拒绝存读档）；无断线重连 |
 | 前端叙事界面 | **88%** | 全屏 CG 特写（ui.cg）、行间停顿节奏控制， 文本流（逐字打印 + 段落点击推进 + 快进）、选项、立绘/背景占位、输入、小游戏触发 |
-| 前端系统界面 | **88%** | **Hub 行动枢纽**（角色卡片 + 剧本注册的行动按钮 + 数值条件锁定）、主菜单、状态栏、存档界面、设置面板（localStorage） |
+| 前端系统界面 | **90%** | **Hub 行动枢纽**（角色卡片 + 剧本注册的行动按钮 + 数值条件锁定）、主菜单、状态栏、存档界面、设置面板（localStorage）；**UI 状态机**（根界面 + panel 覆盖层 + 空壳防护，ADR-0008） |
 | 小游戏 | **60%** | Canvas 独立层架构验证（注册表 + MinigameHost + 结果回传）；仅 1 个原型（史莱姆回合制） |
 | 内容资产 | **32%** | 14 个 Lua 剧本：灵梦完整主线（4 段突破 + 送礼 + 闲聊/修行/早晨）、魔理沙基础互动、日常事件、序章、自检：序章 / 咖啡店 / 蘑菇事件 / **早晨问候（每日）** / 演示 + DSL 自检；日常事件链已跑通（day 2 起每天早晨 + day≥3 蘑菇 + day≥5 咖啡店）；美术为 2026-10 ComfyUI 低分辨率占位（立绘 624×912、背景/CG 768×432），待按提示词重制；音频全空 |
-| 测试 | **95%** | 后端 130 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端无自动化测试（e2e-check.mjs 手工联调脚本） |
-| 文档体系 | **92%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×7 / DSL 契约 / 美术提示词包 / planning |
+| 测试 | **96%** | 后端 162 项（事件/状态/调度/存档/WS 端到端 + event payload 回归 + 存读档一致性 + 对话快照 + 日常事件链）；前端 14 项 store 测试（Vitest：模式栈/迟到消息/事件匹配/读档面板/转移日志）；e2e-check.mjs 仍为手工联调 |
+| 文档体系 | **93%** | CONTEXT（词汇）/ architecture / requirements（PRD）/ references（坑位）/ ADR×8 / DSL 契约 / 美术提示词包 / 美术素材待办 / planning |
 
 **总体评估**：引擎平台 ~85%，内容创作 ~10%。开发阶段（Phase 1-4）结束，进入内容阶段（写剧本 / 补素材 / 加小游戏）。
 
@@ -71,6 +71,13 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 存档界面白色滚动条/横条 | 白底粗轨道 + 不该有的横滚条 | 自定义细线滚动条（透明 track）+ `overflow-x: hidden` |
 | 对话中途存档存出半截画面 | 存档只序列化后端 GameContext，对话/立绘/选项在前端 store，读档后数据对不上画面 | 服务端 `_persist_blocked` 强制拒绝 + 前端按钮按 `canPersist` 置灰，只在脚本空闲时可存读档 |
 | 读档后只剩 `——` 空屏 | 空文本区占位符（`TextFlow.vue`）+ 读档只 `deserialize` 数据，画面从未存过 | 存档增加 `dialogue` 段（DialogueRecorder 记录画面类消息），读档后前端 `restoreDialogue` 重放；`restoring` 标志让文本直接铺满不重播逐字 |
+| 模式栈空栈 pop 回退 `game` | 小游戏重复 finish / 额外 pop 后进入只有 `——` 的空壳 | 空栈 pop 改 no-op；`finishMinigame` 幂等；根界面/覆盖层拆分（ADR-0008） |
+| 迟到的 WS 结果覆盖新界面 | 睡觉/读档/`event.done`/`minigame.start` 在回主菜单后到达，把界面切进空 game | 模式与代际校验（`pendingLoadEpoch`/`uiEpoch`），迟到消息丢弃 |
+| Hub 行动被后端拒绝后停在空 game | `chooseHubButton` 已清空内容并切到 game，`event.result` 失败只弹 toast | 失败且无内容时回收 `enterHub()` |
+| 读档成功后面板不关闭 | load 面板继续盖在游戏/Hub 上 | `load.result` 成功后清 `panel` / `detailChar` |
+| 未知 UI 模式渲染空白页 | `App.vue` 的 `v-else` 落到 GameScreen，内部无匹配分支 | 未知模式渲染「界面状态异常」恢复页 + 状态转移日志 |
+| 自检从 Hub 触发后选项不可见 | 剧本先弹选项，但 Hub 不渲染 ChoiceMenu，uiMode 仍是 hub | `runSelftest()` 先切到 game 并清空叙事区 |
+| 旧事件的 event.done 结束新事件 | 只校验了 uiMode，没校验是哪个事件 | `pendingEvent`（名称 + 代际）匹配后才接受 |
 
 ### 剧本 / DSL 类
 | 坑 | 现象 | 解决 |
@@ -130,7 +137,7 @@ git show pre-web-refactor:tests/test_event_bus.py
 - ~~日常事件在真实游玩中无法触发~~：已补工具条「下一天」按钮（`game.day_advance`），
   并新增每日早晨问候剧本；door 见 `docs/architecture.md`
 - **挂起中重启的日志噪音**：`Future exception was never retrieved`，功能正常但应吞掉（见踩坑表）
-- **前端自动化测试**：无（e2e-check.mjs 为手工联调脚本）
+- **前端自动化测试**：store 层 14 项（`cd frontend && npm test`）；组件/E2E 仍以 `e2e-check.mjs` 手工联调为主
 - **小游戏**：仅 1 个原型；肉鸽（杀戮尖塔式）未开始
 - **设置面板**：音频音量已接（WebAudio），但无真实素材验证
 - **性能预留**：小游戏 Canvas 独立层已验证（ADR-0005），大规模场景未压测
