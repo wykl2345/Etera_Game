@@ -16,6 +16,7 @@ Emuera/ERA 风格叙事文字冒险游戏引擎，前后端分离架构。
 | `docs/requirements.md` | ★ 正式 PRD：Phase 1-4 需求条目 + 验收标准（开发按此逐条实现） |
 | `docs/references.md` | 官方文档链接 + 版本坑位 + v1 源码查阅方法 |
 | `docs/progress.md` | 开发进度：完成度评估 + 踩坑记录 + git 留档版本 |
+| `docs/灵梦线剧本创作包.md` | ★ 灵梦线结构/条件/关系节奏 + 交给写作 AI 的完整简报与 Lua 契约 |
 | `docs/美术资源规范.md` | 美术资源规格：目录/命名/尺寸/表情清单 + ChatGPT 出图流程 |
 | `docs/美术提示词.md` | ★ 可直接粘贴的 ChatGPT Plus 提示词包（角色设定/立绘/背景/CG） |
 | `docs/美术素材待办.md` | ★ 图片素材待办/验收/归档表（唯一状态表） |

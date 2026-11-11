@@ -55,6 +55,11 @@ function onSlot(slot: SaveSlotInfo): void {
     return
   }
   if (store.panel === 'save') {
+    // 已有存档 → 先确认，避免误覆盖
+    if (slot.exists) {
+      confirmOverwrite.value = slot
+      return
+    }
     store.saveToSlot(slot.slot_id)
   } else {
     if (!slot.exists) {
@@ -67,6 +72,16 @@ function onSlot(slot: SaveSlotInfo): void {
 
 function formatTime(t: string | undefined): string {
   return t ? t.slice(5, 16) : ''
+}
+
+// ── 覆盖/删除确认弹窗 ───────────────────────────
+const confirmOverwrite = ref<SaveSlotInfo | null>(null)
+
+function doOverwrite(): void {
+  if (confirmOverwrite.value) {
+    store.saveToSlot(confirmOverwrite.value.slot_id)
+  }
+  confirmOverwrite.value = null
 }
 
 // ── 删除确认弹窗 ────────────────────────────────
@@ -126,6 +141,29 @@ function doDelete(): void {
       <div class="footer">
         <button class="btn" @click="store.closeMenu">返回</button>
       </div>
+
+      <!-- 覆盖确认弹窗 -->
+      <Transition name="confirm">
+        <div v-if="confirmOverwrite" class="confirm-overlay">
+          <div class="confirm-box">
+            <h3>覆盖存档</h3>
+            <p>
+              槽位
+              <span class="hl">{{ confirmOverwrite.slot_id === 0 ? '快速存档' : confirmOverwrite.slot_id }}</span>
+              已有存档，确定覆盖吗？
+            </p>
+            <p v-if="confirmOverwrite.metadata" class="meta">
+              第 {{ confirmOverwrite.metadata.day }} 天 ·
+              {{ confirmOverwrite.metadata.location_name ?? confirmOverwrite.metadata.location }} ·
+              {{ formatTime(confirmOverwrite.metadata.save_time) }}
+            </p>
+            <div class="btns">
+              <button class="btn danger" @click="doOverwrite">覆盖</button>
+              <button class="btn" @click="confirmOverwrite = null">取消</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
       <!-- 删除确认弹窗 -->
       <Transition name="confirm">
