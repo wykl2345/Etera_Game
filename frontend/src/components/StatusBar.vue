@@ -26,7 +26,7 @@ function pct(cur: number | undefined, max: number | undefined): number {
       <span class="sep">|</span>
       <span class="time">{{ timeLabel }}</span>
       <span class="sep">|</span>
-      <span class="loc">{{ status?.location ?? '—' }}</span>
+      <span class="loc">{{ status?.location_name ?? status?.location ?? '—' }}</span>
     </div>
 
     <div class="bars">

@@ -293,11 +293,14 @@ def _send_saves_list(bundle: Any, output: UIOutput) -> None:
     for s in bundle.save_manager.get_save_slots():
         meta = None
         if s.metadata is not None:
+            scenes = getattr(bundle, "scenes", None)
             meta = {
                 "version": s.metadata.version,
                 "save_time": s.metadata.save_time,
                 "day": s.metadata.day,
                 "location": s.metadata.location,
+                "location_name": scenes.name_of(s.metadata.location)
+                if scenes else s.metadata.location,
                 "description": s.metadata.description,
                 "playtime": s.metadata.playtime,
             }

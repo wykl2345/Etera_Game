@@ -69,6 +69,8 @@ class LuaAPI:
         self._rm = resource_manager
         self._debug_mode = debug_mode
         self._sandbox = sandbox
+        # 场景 id → 显示名（bootstrap 在场景表加载后注入；未注入时退回 id）
+        self.scene_names: Optional[Callable[[str], str]] = None
         # 互动历史记录上下文（data.log_start 开启，log_commit 提交）
         self._log_ctx: Optional[Dict[str, Any]] = None
 
@@ -166,10 +168,12 @@ class LuaAPI:
     def _push_status(self) -> None:
         try:
             stats = self._ctx.get_player("stats")
+            location = self._ctx.get_location()
             status = {
                 "day": self._ctx.get_day(),
                 "time_of_day": self._ctx.get_time_of_day().value,
-                "location": self._ctx.get_location(),
+                "location": location,
+                "location_name": self.scene_names(location) if self.scene_names else location,
                 "player": {
                     "hp": stats.hp, "max_hp": stats.max_hp,
                     "mp": stats.mp, "max_mp": stats.max_mp,

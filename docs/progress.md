@@ -80,6 +80,7 @@ Etera_Game 前后端分离重构：Python 引擎核心（Lua 沙箱 + 事件总�
 | 自检从 Hub 触发后选项不可见 | 剧本先弹选项，但 Hub 不渲染 ChoiceMenu，uiMode 仍是 hub | `runSelftest()` 先切到 game 并清空叙事区 |
 | 旧事件的 event.done 结束新事件 | 只校验了 uiMode，没校验是哪个事件 | `pendingEvent`（名称 + 代际）匹配后才接受 |
 | CG/立绘在最后一行还没读完时提前消失 | 脚本 `cg_off` / `hide_character` 紧跟文本下发，前端立即执行 | `pendingVisuals` 队列按 `seq`/`textAck` 排队；destructive 指令等玩家推进 `userAdvance` 后才执行，并阻塞后续指令保持顺序 |
+| 存档/状态栏地点显示英文 id | `SaveMeta` / `status.sync` 只带 `location` id | 后端补 `location_name`（`scenes.name_of`）；前端优先显示中文名，旧存档回退 id |
 | 背景出现一瞬间就被盖住 | `BackgroundLayer` 的渐变占位层始终渲染在图片之上 | 只在无背景/图片加载失败时渲染占位；图片改为 `v-if` |
 | 立绘旁多出一个虚线框 | `.char-fallback` 与 `<img>` 同时渲染，加载成功也不消失 | 用 `failed` 记录按 `{char}/{expr}` 判断，仅失败时显示占位 |
 | 切换地图不换背景 | 背景只由剧本 `ui.set_background` 设置，Hub 也没有背景层 | `scenes.yaml` 增加 `background`；移动/回家推 `ui.background_set`；Hub 渲染 BackgroundLayer + 暗色 scrim |

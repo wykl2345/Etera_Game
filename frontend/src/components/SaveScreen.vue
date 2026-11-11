@@ -106,7 +106,7 @@ function doDelete(): void {
           <span class="slot-id">{{ slot.slot_id === 0 ? '快速' : String(slot.slot_id).padStart(2, '0') }}</span>
           <div class="slot-body">
             <template v-if="slot.exists && slot.metadata">
-              <span class="slot-day">第 {{ slot.metadata.day }} 天 · {{ slot.metadata.location }}</span>
+              <span class="slot-day">第 {{ slot.metadata.day }} 天 · {{ slot.metadata.location_name ?? slot.metadata.location }}</span>
               <span class="slot-time">{{ formatTime(slot.metadata.save_time) }}</span>
               <span class="slot-desc">{{ slot.metadata.description || '—' }}</span>
             </template>

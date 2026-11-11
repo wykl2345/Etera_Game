@@ -105,6 +105,8 @@ export interface StatusData {
   day: number
   time_of_day: string
   location: string
+  /** 中文地点名（后端 status.sync 映射） */
+  location_name?: string
   player: {
     hp: number
     max_hp: number
@@ -123,6 +125,8 @@ export interface SaveMeta {
   save_time: string
   day: number
   location: string
+  /** 中文地点名（后端按 scenes.yaml 映射；旧存档可能没有） */
+  location_name?: string
   description: string
   playtime: number
 }

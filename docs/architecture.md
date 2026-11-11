@@ -204,6 +204,9 @@ scenes:
 `background` 指向 `resources/images/backgrounds/{id}.png`。`game.move` / `game.home` 成功时后端
 立即推送 `ui.background_set`，Hub 也渲染当前地点背景；不再等剧本里的 `ui.set_background`。
 
+状态栏（`status.sync`）与存档列表（`saves.list`）额外带 `location_name`（`SceneRegistry.name_of`），
+前端优先显示中文名；旧存档没有该字段时回退到 `location` id。
+
 Hub 的「移动」按 `same_region` 标记分两组显示：「本区域内」/「前往其他区域」。
 
 **物品与商店** 数据驱动（`Data/items/items.yaml` + `Data/shops/shops.yaml`）：

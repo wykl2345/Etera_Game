@@ -97,7 +97,7 @@ def init_engine(
     if scenes_config is None:
         scenes_config = Path(characters_dir).parent / "config" / "scenes.yaml"
 
-    return EngineBundle(
+    bundle = EngineBundle(
         bus=bus, ctx=ctx, sandbox=sandbox,
         scheduler=scheduler, api=api, output=output,
         character_model=cm, save_manager=save_manager,
@@ -108,3 +108,6 @@ def init_engine(
             Path(characters_dir).parent / "shops" / "shops.yaml",
         ),
     )
+    # status.sync 用中文地点名（存档/状态栏不再显示 hakurei_shrine 这种 id）
+    bundle.api.scene_names = bundle.scenes.name_of
+    return bundle
