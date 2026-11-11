@@ -563,6 +563,25 @@ class TestItemCategoryAndUse:
 
         assert b.ctx.get_player_stat("stamina") == 56
 
+    @pytest.mark.skipif(not LUPA_AVAILABLE, reason="lupa 不可用")
+    def test_apply_use_effects_handles_chance(self, tmp_path):
+        """回归：概率副作用分支必须能取到 random（曾经 NameError 导致 WS 崩溃）。"""
+        from engine.bootstrap import init_engine
+        from engine.script_runner import UIOutput
+        from ws_gateway import _apply_use_effects
+
+        class _O(UIOutput):
+            def send(self, msg):
+                pass
+
+        b = init_engine(
+            _O(), scripts_dir=str(SCRIPTS_DIR),
+            characters_dir=str(CHARACTERS_DIR), saves_dir=str(tmp_path),
+        )
+        b.ctx.add_item("glowing_mushroom", 1)
+        applied = _apply_use_effects(b, b.catalog.item("glowing_mushroom"))
+        assert any("+6" in text for text in applied), applied
+
 
 class TestCG:
     """CG 特写指令。"""

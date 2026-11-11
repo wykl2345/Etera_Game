@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
@@ -285,6 +286,27 @@ def _send_background(bundle: Any, output: UIOutput, scene_id: str) -> None:
     background = scenes.background_of(scene_id)
     if background:
         output.send({"type": "ui.background_set", "payload": {"name": background}})
+
+
+def _apply_use_effects(bundle: Any, item: Any) -> list[str]:
+    """应用物品效果（含 chance 概率副作用），返回给前端展示的变化文本。"""
+    applied: list[str] = []
+    for eff in getattr(item, "use_effects", None) or []:
+        chance = float(eff.get("chance", 1.0))
+        if chance < 1.0 and random.random() > chance:
+            continue
+        stat = eff.get("stat")
+        delta = eff.get("delta")
+        if stat and delta is not None:
+            bundle.ctx.modify_player_stat(str(stat), int(delta))
+            label = STAT_LABELS.get(str(stat), str(stat))
+            applied.append(f"{label}{int(delta):+d}")
+        flag_ns = eff.get("flag")
+        if flag_ns:
+            ns, _, key = str(flag_ns).partition(".")
+            bundle.ctx.set_global_flag(ns, key, eff.get("value", True))
+            applied.append(f"标记 {flag_ns}")
+    return applied
 
 
 def _send_saves_list(bundle: Any, output: UIOutput) -> None:
@@ -663,23 +685,7 @@ async def handle_connection(
                                          "reason": "背包里没有这件东西"}})
             else:
                 # 应用效果（含概率副作用）
-                applied = []
-                for eff in it.use_effects:
-                    chance = float(eff.get("chance", 1.0))
-                    if chance < 1.0 and random.random() > chance:
-                        continue
-                    stat = eff.get("stat")
-                    delta = eff.get("delta")
-                    if stat and delta is not None:
-                        bundle.ctx.modify_player_stat(str(stat), int(delta))
-                        label = STAT_LABELS.get(str(stat), str(stat))
-                        applied.append(f"{label}{int(delta):+d}")
-                    flag_ns = eff.get("flag")
-                    if flag_ns:
-                        ns, _, key = str(flag_ns).partition(".")
-                        bundle.ctx.set_global_flag(ns, key, eff.get("value", True))
-                        applied.append(f"标记 {flag_ns}")
-
+                applied = _apply_use_effects(bundle, it)
                 bundle.ctx.remove_item(item_id, 1)
                 bundle.api._push_status()
                 output.send({"type": "use.result",

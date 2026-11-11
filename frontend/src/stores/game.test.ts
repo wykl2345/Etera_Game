@@ -279,6 +279,16 @@ describe('视觉指令时序（文本确认进度）', () => {
 })
 
 describe('过期的 WebSocket 消息', () => {
+  it('连接断开后标记 connectionLost（不再假装卡死）', () => {
+    const s = useGameStore()
+    s.bindHandlers()
+
+    dispatch({ type: '__connection_closed' })
+
+    expect(s.connected).toBe(false)
+    expect(s.connectionLost).toBe(true)
+  })
+
   it('主菜单收到迟到的 event.done 不会强行切到 Hub', () => {
     const s = useGameStore()
     s.uiMode = 'main_menu'

@@ -266,6 +266,8 @@ interface GameState {
   pendingEvent: { name: string; epoch: number } | null
   wsUrl: string
   connected: boolean
+  /** 曾经连上后断开（后端崩溃/重启）——显示恢复遮罩，而不是停在旧画面 */
+  connectionLost: boolean
   textFlow: TextLine[]
   /** 已确认的文本行数（TextFlow 上报；用于视觉指令排队） */
   textAck: number
@@ -337,6 +339,7 @@ export const useGameStore = defineStore('game', {
     pendingEvent: null,
     wsUrl: DEFAULT_WS,
     connected: false,
+    connectionLost: false,
     textFlow: [],
     textAck: 0,
     pendingVisuals: [],
@@ -441,12 +444,14 @@ export const useGameStore = defineStore('game', {
 
       if (wsClient.isConnected) {
         this.connected = true
+        this.connectionLost = false
         wsClient.send({ type: 'game.list_saves' })
         return
       }
 
       wsClient.connect(this.wsUrl).then(() => {
         this.connected = true
+        this.connectionLost = false
         // 拉取存档列表（主菜单"继续游戏"可用性判断）
         wsClient.send({ type: 'game.list_saves' })
       }).catch((e) => {
@@ -522,6 +527,7 @@ export const useGameStore = defineStore('game', {
       })
       wsClient.on('__connection_closed', () => {
         this.connected = false
+        this.connectionLost = true
       })
       wsClient.on('status.sync', (m) => {
         this.status = (m.payload ?? {}) as unknown as StatusData

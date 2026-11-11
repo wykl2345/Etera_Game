@@ -15,11 +15,15 @@ import GiftModal from './components/GiftModal.vue'
 import InventoryModal from './components/InventoryModal.vue'
 
 const store = useGameStore()
-const { uiMode, panel, detailChar } = storeToRefs(store)
+const { uiMode, panel, detailChar, connectionLost } = storeToRefs(store)
 
 onMounted(() => {
   store.connect()
 })
+
+function reload(): void {
+  window.location.reload()
+}
 </script>
 
 <template>
@@ -42,6 +46,13 @@ onMounted(() => {
     <ShopModal v-if="panel === 'shop'" />
     <GiftModal v-if="panel === 'gift'" />
     <InventoryModal v-if="panel === 'inventory'" />
+
+    <!-- 后端崩溃/断线：不再停在旧画面假装卡死 -->
+    <div v-if="connectionLost" class="conn-lost">
+      <h2>与服务器断开连接</h2>
+      <p>后端可能出错或已重启。刷新页面可重新连接；当前进度可能丢失。</p>
+      <button class="btn" @click="reload">刷新页面</button>
+    </div>
   </div>
 </template>
 
@@ -49,5 +60,48 @@ onMounted(() => {
 .app-root {
   height: 100%;
   position: relative;   /* 悬浮面板的定位基准 */
+}
+
+.conn-lost {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: rgba(5, 6, 8, 0.88);
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  backdrop-filter: blur(3px);
+}
+.conn-lost h2 {
+  margin: 0;
+  color: var(--fg);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+}
+.conn-lost p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.conn-lost .btn {
+  margin-top: 10px;
+  padding: 9px 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.conn-lost .btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent);
 }
 </style>

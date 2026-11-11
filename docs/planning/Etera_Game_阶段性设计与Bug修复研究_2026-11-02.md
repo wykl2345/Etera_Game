@@ -343,7 +343,7 @@ Application Shell（主题、背景、公共容器，常驻）
 **状态转移日志**：根切换与覆盖层开关统一记录，保留最近 200 条
 （`window.__eteraUiLog`；生产环境 `localStorage.etera.uiDebug=1` 打开控制台输出）。
 
-**回归**：`frontend/src/stores/game.test.ts` 26 项（`cd frontend && npm test`）；
+**回归**：`frontend/src/stores/game.test.ts` 27 项（`cd frontend && npm test`）；
 真实 Chromium 中连点小游戏「返回」验证不再进入空壳；后端 162 项测试不受影响。
 决策：`docs/adr/0008-ui-state-machine.md`；架构：`docs/architecture.md` §6.2。
 
@@ -360,7 +360,7 @@ Application Shell（主题、背景、公共容器，常驻）
 - 覆盖层开关写入 UI 转移日志（`overlay-open/overlay-close` + `overlay.id/moduleId`）。
 
 **验收**：主菜单打开小游戏→返回仍在主菜单；序章选「帮灵梦清理异变」→小游戏覆盖层→
-中途退出后对话继续；26 项 store 测试全绿；真实 Chromium 验证通过。
+中途退出后对话继续；27 项 store 测试全绿；真实 Chromium 验证通过。
 决策：`docs/adr/0009-overlay-host.md`。
 
 **仍未完成**：P4 的非小游戏模块 + 独立最小 Mod（复用 `input/complete/cancel` 契约）；
