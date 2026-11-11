@@ -391,6 +391,22 @@ P3 起 UI 分成三层；覆盖层不再是“伪装成根界面的模式”，�
 - Vue 只做外壳与状态桥接（进入/退出模式、得分回写 GameContext）
 - 卡牌/肉鸽战斗逻辑全部 Canvas 2D 实现，主框架零干扰——**这是选 Vue 而非游戏引擎的原因：主 UI 是文本冒险，小游戏是附加能力，两者解耦**
 
+### 6.5 文本与视觉指令时序
+
+后端按脚本顺序连续下发 `ui.text` 与 `ui.background_set` / `ui.character_show` / `ui.character_hide` / `ui.cg`；
+前端文本是分段阅读的，视觉指令不能全部立即执行，否则会出现「最后一行还没读完，CG/立绘已经消失」。
+
+做法（`stores/game.ts` 的 `pendingVisuals` 队列）：
+
+1. 每条视觉指令记录到达时的文本行数 `seq`。
+2. `TextFlow` 上报已确认文本数 `textAck`（正在等点击的最后一行不算确认）。
+3. `seq <= textAck` 的普通视觉指令（背景/立绘出现/CG 出现）按顺序执行。
+4. `hide_character` / `cg_off` 属于 destructive：还要求玩家真正推进一次文本（`userAdvance`），
+   避免在阅读最后一段时清掉画面；它们也会阻塞后续视觉指令，保持脚本顺序。
+5. `ui.clear`、回 Hub、开新事件、读档重放都会清空队列（`resetPresentation`）。
+
+回归：`frontend/src/stores/game.test.ts` 的「视觉指令时序」用例。
+
 ---
 
 ## 七、仓库目录结构（v2）

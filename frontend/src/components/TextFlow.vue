@@ -90,6 +90,8 @@ watch(
   [confirmed, activeIdx, showContinue, () => textFlow.value.length],
   () => {
     store.textIdle = activeIdx.value === -1 && !showContinue.value
+    // 显示完成但还在等点击的最后一行不算“已确认”
+    store.setTextAck(Math.max(0, confirmed.value - (showContinue.value ? 1 : 0)))
   },
   { immediate: true },
 )
@@ -175,6 +177,8 @@ function onRevealDone(): void {
 function onAdvance(): void {
   if (showContinue.value) {
     // 确认当前段（confirmed 已在 onRevealDone 计入），开始下一段（若已到达）
+    // 同时放行排队的 hide/cg_off：玩家已读完这段，画面可以清理/切换了
+    store.userAdvance(confirmed.value)
     showContinue.value = false
     if (confirmed.value < textFlow.value.length) {
       startNext()

@@ -62,6 +62,20 @@ export interface UiTransition {
   }
 }
 
+/**
+ * 视觉指令队列项。
+ *
+ * 后端把 ui.text 与立绘/背景/CG 指令按脚本顺序连续下发；前端文本是分段阅读的，
+ * 若视觉指令立即执行，就会出现「最后一行还没读完，CG/立绘已经消失」。
+ * seq = 指令到达时的文本行数；只有玩家确认到该进度后才应用。
+ * destructive（hide_character / cg_off）还要求一次玩家推进，避免清掉正在阅读的画面。
+ */
+type PendingVisual =
+  | { seq: number; kind: 'background'; name: string | null; destructive: false }
+  | { seq: number; kind: 'character_show'; charId: string; expression: string; position: string; destructive: false }
+  | { seq: number; kind: 'character_hide'; charId: string; destructive: true }
+  | { seq: number; kind: 'cg'; name: string | null; destructive: boolean }
+
 const UI_LOG_LIMIT = 200
 /** 覆盖层实例序号（模块级，不需要响应式） */
 let overlaySeq = 0
@@ -249,6 +263,10 @@ interface GameState {
   wsUrl: string
   connected: boolean
   textFlow: TextLine[]
+  /** 已确认的文本行数（TextFlow 上报；用于视觉指令排队） */
+  textAck: number
+  /** 尚未到执行时机的视觉指令 */
+  pendingVisuals: PendingVisual[]
   choice: Choice | null
   input: InputRequest | null
   background: string | null
@@ -316,6 +334,8 @@ export const useGameStore = defineStore('game', {
     wsUrl: DEFAULT_WS,
     connected: false,
     textFlow: [],
+    textAck: 0,
+    pendingVisuals: [],
     choice: null,
     input: null,
     background: null,
@@ -444,6 +464,7 @@ export const useGameStore = defineStore('game', {
       })
       wsClient.on('ui.clear', () => {
         this.textFlow = []
+        this.resetPresentation()
       })
       wsClient.on('ui.ask_choice', (m) => {
         const p = (m.payload ?? {}) as { options?: unknown[] }
@@ -466,21 +487,34 @@ export const useGameStore = defineStore('game', {
       })
       wsClient.on('ui.background_set', (m) => {
         const p = (m.payload ?? {}) as { name?: string }
-        this.background = p.name ?? null
+        this.queueVisual({
+          seq: this.textFlow.length,
+          kind: 'background',
+          name: p.name ?? null,
+          destructive: false,
+        })
       })
       wsClient.on('ui.character_show', (m) => {
         const p = (m.payload ?? {}) as { char_id?: string; expression?: string; position?: string }
-        if (p.char_id) {
-          this.characters.set(p.char_id, {
-            charId: p.char_id,
-            expression: p.expression ?? 'normal',
-            position: p.position ?? 'center',
-          })
-        }
+        if (!p.char_id) return
+        this.queueVisual({
+          seq: this.textFlow.length,
+          kind: 'character_show',
+          charId: p.char_id,
+          expression: p.expression ?? 'normal',
+          position: p.position ?? 'center',
+          destructive: false,
+        })
       })
       wsClient.on('ui.character_hide', (m) => {
         const p = (m.payload ?? {}) as { char_id?: string }
-        if (p.char_id) this.characters.delete(p.char_id)
+        if (!p.char_id) return
+        this.queueVisual({
+          seq: this.textFlow.length,
+          kind: 'character_hide',
+          charId: p.char_id,
+          destructive: true,
+        })
       })
       wsClient.on('__connection_closed', () => {
         this.connected = false
@@ -618,6 +652,7 @@ export const useGameStore = defineStore('game', {
           // 新的一天可能有早晨事件（会弹对话/选项）—— 必须切到叙事界面，
           // 否则 Hub 不渲染 ChoiceMenu，选项"消失"而脚本一直挂着。
           this.textFlow = []
+          this.resetPresentation()
           this.choice = null
           this.input = null
           this.characters.clear()
@@ -711,7 +746,13 @@ export const useGameStore = defineStore('game', {
       // 全屏 CG 特写（DSL ui.cg / ui.cg_off）
       wsClient.on('ui.cg', (m) => {
         const p = (m.payload ?? {}) as { name?: string | null }
-        this.cgImage = p.name ?? null
+        const name = p.name ?? null
+        this.queueVisual({
+          seq: this.textFlow.length,
+          kind: 'cg',
+          name,
+          destructive: name === null,
+        })
       })
 
       // 使用物品结果
@@ -758,6 +799,7 @@ export const useGameStore = defineStore('game', {
       this.choice = null
       this.input = null
       this.textFlow = []
+      this.resetPresentation()
       this.background = null
       this.characters.clear()
 
@@ -767,6 +809,7 @@ export const useGameStore = defineStore('game', {
         switch (e?.type) {
           case 'ui.clear':
             this.textFlow = []
+            this.resetPresentation()
             this.background = null
             this.characters.clear()
             break
@@ -858,6 +901,67 @@ export const useGameStore = defineStore('game', {
     /** 记录被丢弃的迟到消息（默认只在调试模式打印） */
     logIgnored(kind: string, detail?: string): void {
       if (uiDebugEnabled()) console.debug('[ui] ignored stale message:', kind, detail ?? '')
+    },
+
+    /** 真正修改画面状态（由视觉队列在正确时机调用） */
+    applyVisual(v: PendingVisual): void {
+      switch (v.kind) {
+        case 'background':
+          this.background = v.name
+          break
+        case 'character_show':
+          this.characters.set(v.charId, {
+            charId: v.charId,
+            expression: v.expression,
+            position: v.position,
+          })
+          break
+        case 'character_hide':
+          this.characters.delete(v.charId)
+          break
+        case 'cg':
+          this.cgImage = v.name
+          break
+      }
+    },
+
+    /**
+     * 尝试执行队首视觉指令。
+     * - seq <= textAck：玩家已确认到该文本进度
+     * - destructive（hide/cg_off）还要求一次玩家推进，避免清掉正在读的画面
+     */
+    flushVisuals(forceDestructive = false): void {
+      while (this.pendingVisuals.length > 0) {
+        const v = this.pendingVisuals[0]
+        if (v.seq > this.textAck) break
+        if (v.destructive && this.textFlow.length > 0 && !forceDestructive) break
+        this.pendingVisuals.shift()
+        this.applyVisual(v)
+      }
+    },
+
+    /** 接收一条视觉指令：先入队，再按当前文本进度尝试执行 */
+    queueVisual(v: PendingVisual): void {
+      this.pendingVisuals.push(v)
+      this.flushVisuals()
+    },
+
+    /** TextFlow 上报“已确认到第 n 行”（显示完成但尚未点击的行不计入） */
+    setTextAck(n: number): void {
+      this.textAck = Math.max(0, n)
+      this.flushVisuals()
+    },
+
+    /** 玩家点击确认文本：允许执行 hide/cg_off 等清理型视觉指令 */
+    userAdvance(confirmed: number): void {
+      this.textAck = Math.max(this.textAck, Math.max(0, confirmed))
+      this.flushVisuals(true)
+    },
+
+    /** 新事件/回 Hub/读档重放：丢弃上一段未执行的视觉指令 */
+    resetPresentation(): void {
+      this.pendingVisuals = []
+      this.textAck = 0
     },
 
     /** 根界面切换：清空待处理读档/事件、代际 +1、不改变覆盖层 */
@@ -987,6 +1091,7 @@ export const useGameStore = defineStore('game', {
       this.clearOverlay('user', 'start-game')
       this.resetMode('game', 'user', 'start-game')
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.background = null
@@ -1004,6 +1109,7 @@ export const useGameStore = defineStore('game', {
       this.clearOverlay('user', 'back-to-menu')
       this.resetMode('main_menu', 'user', 'back-to-menu')
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.background = null
@@ -1150,6 +1256,7 @@ export const useGameStore = defineStore('game', {
       this.clearOverlay(source, 'enter-hub')
       this.resetMode('hub', source, reason)
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.eventFinished = false
@@ -1185,6 +1292,7 @@ export const useGameStore = defineStore('game', {
       // 新事件是独立场景：清掉上一段的文本/背景/立绘，避免累积成一团
       this.resetMode('game', 'user', 'hub-action')
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.cgImage = null
@@ -1203,6 +1311,7 @@ export const useGameStore = defineStore('game', {
       // 新的一天：清掉前一天残留的文本/背景/立绘
       this.resetMode('game', 'user', 'day-advance')
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.characters.clear()
@@ -1219,6 +1328,7 @@ export const useGameStore = defineStore('game', {
       // 自检剧本会先弹选项；Hub 不渲染 ChoiceMenu，必须切到叙事界面
       this.resetMode('game', 'user', 'selftest')
       this.textFlow = []
+      this.resetPresentation()
       this.choice = null
       this.input = null
       this.cgImage = null

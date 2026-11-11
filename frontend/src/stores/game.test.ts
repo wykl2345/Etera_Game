@@ -178,6 +178,106 @@ describe('Overlay Host（P3）', () => {
   })
 })
 
+describe('视觉指令时序（文本确认进度）', () => {
+  it('CG 先入队，文本确认后才显示；cg_off 等玩家推进后才清除', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({ type: 'ui.text', payload: { text: '第一行' } })
+    dispatch({ type: 'ui.cg', payload: { name: 'reimu_01_afternoon' } })
+    expect(s.cgImage).toBeNull()
+
+    s.setTextAck(1)
+    expect(s.cgImage).toBe('reimu_01_afternoon')
+
+    dispatch({ type: 'ui.cg', payload: { name: null } })
+    expect(s.cgImage).toBe('reimu_01_afternoon')
+
+    s.userAdvance(1)
+    expect(s.cgImage).toBeNull()
+  })
+
+  it('立绘 hide 不会在玩家读完前提前消失', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({ type: 'ui.text', payload: { text: '第一行' } })
+    dispatch({
+      type: 'ui.character_show',
+      payload: { char_id: 'reimu', expression: 'normal', position: 'center' },
+    })
+    s.setTextAck(1)
+    expect(s.characters.get('reimu')?.expression).toBe('normal')
+
+    dispatch({ type: 'ui.character_hide', payload: { char_id: 'reimu' } })
+    expect(s.characters.has('reimu')).toBe(true)
+
+    s.userAdvance(1)
+    expect(s.characters.has('reimu')).toBe(false)
+  })
+
+  it('表情切换等文本读完再发生', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({
+      type: 'ui.character_show',
+      payload: { char_id: 'reimu', expression: 'normal', position: 'center' },
+    })
+    dispatch({ type: 'ui.text', payload: { text: '第一行' } })
+    dispatch({
+      type: 'ui.character_show',
+      payload: { char_id: 'reimu', expression: 'happy', position: 'center' },
+    })
+    expect(s.characters.get('reimu')?.expression).toBe('normal')
+
+    s.setTextAck(1)
+    expect(s.characters.get('reimu')?.expression).toBe('happy')
+  })
+
+  it('destructive 指令会阻塞后续视觉指令，保持顺序', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({
+      type: 'ui.character_show',
+      payload: { char_id: 'reimu', expression: 'normal', position: 'center' },
+    })
+    dispatch({ type: 'ui.text', payload: { text: '第一行' } })
+    dispatch({ type: 'ui.character_hide', payload: { char_id: 'reimu' } })
+    dispatch({
+      type: 'ui.character_show',
+      payload: { char_id: 'marisa', expression: 'grin', position: 'right' },
+    })
+
+    s.setTextAck(1)
+    expect(s.characters.has('reimu')).toBe(true)
+    expect(s.characters.has('marisa')).toBe(false)
+
+    s.userAdvance(1)
+    expect(s.characters.has('reimu')).toBe(false)
+    expect(s.characters.has('marisa')).toBe(true)
+  })
+
+  it('ui.clear 会丢弃上一段未执行的视觉指令', () => {
+    const s = useGameStore()
+    s.uiMode = 'game'
+    s.bindHandlers()
+
+    dispatch({ type: 'ui.text', payload: { text: '第一行' } })
+    dispatch({ type: 'ui.cg', payload: { name: 'reimu_01_afternoon' } })
+    dispatch({ type: 'ui.clear' })
+
+    s.setTextAck(1)
+    expect(s.cgImage).toBeNull()
+    expect(s.pendingVisuals).toHaveLength(0)
+  })
+})
+
 describe('过期的 WebSocket 消息', () => {
   it('主菜单收到迟到的 event.done 不会强行切到 Hub', () => {
     const s = useGameStore()
