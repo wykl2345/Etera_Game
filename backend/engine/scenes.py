@@ -26,6 +26,7 @@ class Scene:
     desc: str = ""
     can_sleep: bool = False
     shop: str = ""
+    background: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -35,6 +36,7 @@ class Scene:
             "desc": self.desc,
             "can_sleep": self.can_sleep,
             "shop": self.shop,
+            "background": self.background,
         }
 
 
@@ -103,6 +105,7 @@ class SceneRegistry:
                 desc=str(spec.get("desc", "")),
                 can_sleep=bool(spec.get("sleep", False)),
                 shop=str(spec.get("shop", "") or ""),
+                background=str(spec.get("background", "") or ""),
             )
 
         logger.info(
@@ -136,6 +139,13 @@ class SceneRegistry:
     def shop_of(self, scene_id: str) -> str:
         scene = self._scenes.get(scene_id)
         return scene.shop if scene else ""
+
+    def background_of(self, scene_id: str) -> str:
+        """场景对应的背景 id；未配置时回退为场景 id（缺图时前端显示占位）。"""
+        scene = self._scenes.get(scene_id)
+        if scene is None:
+            return ""
+        return scene.background or scene.id
 
     def reachable(self, scene_id: str) -> List[Dict[str, Any]]:
         """可达地点：同区域其他地点 + 相邻区域的地點。

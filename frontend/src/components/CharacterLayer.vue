@@ -1,17 +1,30 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore, ASSET_BASE } from '../stores/game'
 
 const store = useGameStore()
 const { characters } = storeToRefs(store)
 
+/** 对话默认靠右；left 留给双人/特殊站位 */
 function posClass(position: string): string {
-  return `pos-${position}`
+  return position === 'left' ? 'pos-left' : 'pos-right'
 }
 
 function imageUrl(charId: string, expression: string): string {
   // 规范目录结构：resources/images/characters/{id}/{expression}.png
   return `${ASSET_BASE}/images/characters/${charId}/${expression}.png`
+}
+
+/** 只有图片加载失败才显示占位卡片（不能和立绘同时出现） */
+const failed = ref<Record<string, boolean>>({})
+
+function keyOf(ch: { charId: string; expression: string }): string {
+  return `${ch.charId}/${ch.expression}`
+}
+
+function onError(key: string): void {
+  failed.value[key] = true
 }
 </script>
 
@@ -24,13 +37,14 @@ function imageUrl(charId: string, expression: string): string {
       :class="posClass(ch.position)"
     >
       <img
+        v-if="!failed[keyOf(ch)]"
         :src="imageUrl(ch.charId, ch.expression)"
         class="char-img"
         alt=""
-        @error="(e) => ((e.target as HTMLImageElement).style.display = 'none')"
+        @error="onError(keyOf(ch))"
       />
-      <!-- 无素材时显示占位卡片（img 加载失败自动隐藏） -->
-      <div class="char-fallback">
+      <!-- 无素材时才显示占位卡片 -->
+      <div v-else class="char-fallback">
         <span class="char-id">{{ ch.charId }}</span>
         <span class="char-expr">{{ ch.expression }}</span>
       </div>
@@ -42,36 +56,39 @@ function imageUrl(charId: string, expression: string): string {
 .char-layer {
   position: absolute;
   inset: 0;
+  /* 立绘在背景之上、文本框之下 */
   z-index: 1;
   pointer-events: none;
 }
 
+/*
+ * 对话立绘：靠右、半身（容器裁掉大腿以下）。
+ * 容器宽高比 0.95，而源图是 2:3；图片按宽度铺满后向下溢出，
+ * overflow:hidden 只保留上半部，形成“半身像”。
+ */
 .char-item {
   position: absolute;
-  bottom: 230px;
-  width: 260px;
-  height: 380px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  bottom: 0;
+  width: min(74.1vh, 60vw, 779px);
+  aspect-ratio: 0.95;
+  overflow: hidden;
   animation: fadeIn 0.6s ease;
 }
 
-.pos-right { right: 12%; }
-.pos-left { left: 12%; }
-.pos-center { left: 50%; transform: translateX(-50%); }
+.pos-right { right: 0; }
+.pos-left { left: 0; }
 
 .char-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  display: block;
+  width: 100%;
+  height: auto;
   filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.5));
 }
 
 /* 无素材占位：立绘名 + 表情 */
 .char-fallback {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   border: 1px dashed var(--border);
   border-radius: 8px;
   display: flex;

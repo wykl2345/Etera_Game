@@ -337,6 +337,7 @@ class TestHubPayload:
         assert scene["name"] == "自宅"
         assert scene["region_name"] == "人间之里"
         assert scene["can_sleep"] is True
+        assert scene["background"] == "home", "Hub 场景应带背景 id"
 
         ids = {s["id"] for s in scene["adjacent"]}
         # 同区域：市集；相邻区域：神社 / 魔法森林
@@ -420,6 +421,14 @@ class TestRegionTravel:
         assert r.can_travel_to("hakurei_shrine", "market") is False
         # 神社 → 魔法森林（对方入口）
         assert r.can_travel_to("hakurei_shrine", "magic_forest") is True
+
+    def test_scene_background_mapping(self):
+        r = self._registry()
+        assert r.background_of("home") == "home"
+        assert r.background_of("market") == "market"
+        assert r.background_of("hakurei_shrine") == "shrine"
+        assert r.background_of("magic_forest") == "forest"
+        assert r.background_of("nope") == ""
 
     def test_reachable_exposes_region_not_inner_scenes(self):
         r = self._registry()

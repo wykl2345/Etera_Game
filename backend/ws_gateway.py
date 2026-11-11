@@ -201,6 +201,8 @@ def _hub_payload(bundle: Any) -> Dict[str, Any]:
         "region_name": scenes.region_name(scene.region) if scene else "",
         "desc": scene.desc if scene else "",
         "can_sleep": scenes.can_sleep(scene_id) if scenes else False,
+        # 当前地点的背景 id；Hub 也渲染背景，移动时立即切换
+        "background": scenes.background_of(scene_id) if scenes else "",
         # 有商店的地点才有值，前端据此显示「购物」
         "shop": {"id": scene.shop, "name": catalog.shop(scene.shop).name}
         if (scene and scene.shop and catalog and catalog.shop(scene.shop)) else None,
@@ -273,6 +275,16 @@ def _send_characters(bundle: Any, output: UIOutput) -> None:
 
 def _send_hub(bundle: Any, output: UIOutput) -> None:
     output.send({"type": "hub.buttons", "payload": _hub_payload(bundle)})
+
+
+def _send_background(bundle: Any, output: UIOutput, scene_id: str) -> None:
+    """地点变化时立即推背景，前端无需等进入对话/剧本。"""
+    scenes = getattr(bundle, "scenes", None)
+    if scenes is None:
+        return
+    background = scenes.background_of(scene_id)
+    if background:
+        output.send({"type": "ui.background_set", "payload": {"name": background}})
 
 
 def _send_saves_list(bundle: Any, output: UIOutput) -> None:
@@ -521,6 +533,7 @@ async def handle_connection(
                              "payload": {"ok": False, "reason": "这里去不了"}})
             else:
                 bundle.ctx.set_location(target)
+                _send_background(bundle, output, target)
                 bundle.api._push_status()
                 output.send({"type": "move.result",
                              "payload": {"ok": True, "scene": target,
@@ -532,6 +545,7 @@ async def handle_connection(
             home_scene = "home"
             if scenes is not None and scenes.exists(home_scene):
                 bundle.ctx.set_location(home_scene)
+                _send_background(bundle, output, home_scene)
                 bundle.api._push_status()
                 output.send({"type": "move.result",
                              "payload": {"ok": True, "scene": home_scene,

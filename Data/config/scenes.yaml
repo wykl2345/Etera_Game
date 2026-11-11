@@ -9,11 +9,13 @@
 #   adjacent  相邻区域（引擎自动补双向）
 #
 # scenes:
-#   name      地点显示名
-#   region    所属区域
-#   desc      地点描述
-#   sleep     可在此睡觉（恢复体力 + 推进一天）
-#   shop      该地点的商店 ID（见 Data/shops/）
+#   name       地点显示名
+#   region     所属区域
+#   desc       地点描述
+#   sleep      可在此睡觉（恢复体力 + 推进一天）
+#   shop       该地点的商店 ID（见 Data/shops/）
+#   background 背景资源 id（resources/images/backgrounds/{id}.png）
+#              留空时回退为场景 id；移动/进入 Hub 时立即切换
 
 regions:
   # entrance = 从其他区域进来时落在哪个地点
@@ -38,19 +40,23 @@ scenes:
     region: human_village
     desc: 你在人间之里的小屋，陈设简单但还算舒适。
     sleep: true
+    background: home
 
   market:
     name: 市集
     region: human_village
     desc: 人声鼎沸的市集，什么都买得到。
     shop: village_market
+    background: market
 
   hakurei_shrine:
     name: 博丽神社
     region: shrine
     desc: 山顶上的神社，香火冷清，但风景极好。
+    background: shrine
 
   magic_forest:
     name: 魔法森林
     region: forest
     desc: 雾气弥漫的森林，到处是奇怪的蘑菇。
+    background: forest

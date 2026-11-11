@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore } from '../stores/game'
 import StatusBar from './StatusBar.vue'
+import BackgroundLayer from './BackgroundLayer.vue'
 
 const store = useGameStore()
 const { hubCharacters, hubCharButtons, hubSelectedChar, hubScene, toast } = storeToRefs(store)
@@ -29,6 +30,9 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
 
 <template>
   <div class="hub">
+    <!-- Hub 也显示当前地点背景；移动时由 WS 立即推送 ui.background_set -->
+    <BackgroundLayer />
+    <div class="hub-scrim" />
     <StatusBar />
 
     <div class="hub-body">
@@ -36,7 +40,10 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
       <header class="hub-head">
         <h2>
           {{ hubScene?.name ?? '未知地点' }}
-          <span v-if="hubScene?.region_name" class="region">{{ hubScene.region_name }}</span>
+          <span
+            v-if="hubScene?.region_name && hubScene.region_name !== hubScene.name"
+            class="region"
+          >{{ hubScene.region_name }}</span>
         </h2>
         <p v-if="hubScene?.desc" class="hint">{{ hubScene.desc }}</p>
       </header>
@@ -164,7 +171,17 @@ function costLabel(b: { stamina_cost: number; daily_limit: number; used_today: n
   overflow: hidden;
 }
 
+.hub-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(11, 13, 16, 0.74);
+  pointer-events: none;
+}
+
 .hub-body {
+  position: relative;
+  z-index: 1;
   flex: 1;
   overflow-y: auto;
   /* 顶部让出 52px：StatusBar 是 position:absolute，不占文档流 */

@@ -9,8 +9,21 @@ import { type BaseMode, type UiMode } from './uiMode'
 
 export type { UiMode } from './uiMode'
 
+/**
+ * 开发用端口覆盖：?wsPort=8767&assetPort=8768
+ * 默认仍为 8765/8766；用于本机有旧进程占用端口时快速换端口测试。
+ */
+function endpointPort(name: string, fallback: number): number {
+  if (typeof window === 'undefined') return fallback
+  const raw = new URLSearchParams(window.location.search).get(name)
+  const port = raw ? Number(raw) : NaN
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : fallback
+}
+
+const WS_PORT = endpointPort('wsPort', 8765)
+
 /** 静态资源基地址（后端 main.py 的静态服务，默认 127.0.0.1:8766） */
-export const ASSET_BASE = 'http://127.0.0.1:8766'
+export const ASSET_BASE = `http://127.0.0.1:${endpointPort('assetPort', 8766)}`
 
 export type UiTransitionAction = 'reset' | 'overlay-open' | 'overlay-close'
 export type UiTransitionSource = 'user' | 'ws' | 'system' | 'component'
@@ -159,6 +172,8 @@ export interface HubScene {
   region_name: string
   desc: string
   can_sleep: boolean
+  /** 当前地点的背景 id（后端按 scenes.yaml 的 background 解析） */
+  background: string | null
   /** 本地点的商店（没有则为 null） */
   shop: { id: string; name: string } | null
   adjacent: SceneLink[]
@@ -288,7 +303,7 @@ interface GameState {
   invCategory: 'all' | 'item' | 'equip' | 'skill' | 'key'
 }
 
-const DEFAULT_WS = 'ws://127.0.0.1:8765'
+const DEFAULT_WS = `ws://127.0.0.1:${WS_PORT}`
 
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
@@ -605,7 +620,6 @@ export const useGameStore = defineStore('game', {
           this.textFlow = []
           this.choice = null
           this.input = null
-          this.background = null
           this.characters.clear()
           this.eventFinished = false
           this.autoAdvance = true
@@ -653,6 +667,10 @@ export const useGameStore = defineStore('game', {
         this.hubScene = p.scene ?? null
         this.hubCharacters = p.characters ?? []
         this.hubButtons = p.buttons ?? []
+        // Hub 也显示地点背景：进入/移动后立即同步（移动时后端还会先推 ui.background_set）
+        if (this.uiMode === 'hub' && p.scene?.background) {
+          this.background = p.scene.background
+        }
         // 选中角色若已不在列表里则清空
         if (this.hubSelectedChar
             && !this.hubCharacters.some((c) => c.char_id === this.hubSelectedChar)) {
@@ -1135,7 +1153,6 @@ export const useGameStore = defineStore('game', {
       this.choice = null
       this.input = null
       this.eventFinished = false
-      this.background = null
       this.cgImage = null
       this.characters.clear()
       this.panel = null
@@ -1170,7 +1187,6 @@ export const useGameStore = defineStore('game', {
       this.textFlow = []
       this.choice = null
       this.input = null
-      this.background = null
       this.cgImage = null
       this.characters.clear()
       this.pendingEvent = { name: btn.event, epoch: this.uiEpoch }
@@ -1189,7 +1205,6 @@ export const useGameStore = defineStore('game', {
       this.textFlow = []
       this.choice = null
       this.input = null
-      this.background = null
       this.characters.clear()
       this.pendingEvent = { name: 'day_advance', epoch: this.uiEpoch }
       wsClient.send({ type: 'game.day_advance' })
@@ -1206,7 +1221,6 @@ export const useGameStore = defineStore('game', {
       this.textFlow = []
       this.choice = null
       this.input = null
-      this.background = null
       this.cgImage = null
       this.characters.clear()
       this.eventFinished = false

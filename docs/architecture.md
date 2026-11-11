@@ -197,9 +197,12 @@ glowing_mushroom:
 regions:
   human_village: { name: 人间之里, adjacent: [shrine, forest] }
 scenes:
-  home:   { name: 自宅, region: human_village, sleep: true }
-  market: { name: 市集, region: human_village, shop: village_market }
+  home:   { name: 自宅, region: human_village, sleep: true, background: home }
+  market: { name: 市集, region: human_village, shop: village_market, background: market }
 ```
+
+`background` 指向 `resources/images/backgrounds/{id}.png`。`game.move` / `game.home` 成功时后端
+立即推送 `ui.background_set`，Hub 也渲染当前地点背景；不再等剧本里的 `ui.set_background`。
 
 Hub 的「移动」按 `same_region` 标记分两组显示：「本区域内」/「前往其他区域」。
 

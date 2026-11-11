@@ -39,6 +39,9 @@ python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 # 前端（Node ≥24，已装于 ~/.local）
 cd frontend && npm install && npm run dev   # Phase 2 后可用
 cd frontend && npm test                     # store 状态机回归（Vitest）
+
+# 端口被占用时的开发覆盖（后端换到 8767/8768 后）：
+# http://127.0.0.1:5173/?wsPort=8767&assetPort=8768
 ```
 
 ## 迁移状态

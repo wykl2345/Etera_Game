@@ -207,6 +207,43 @@ describe('过期的 WebSocket 消息', () => {
     expect(s.textFlow).toHaveLength(0)
   })
 
+  it('Hub 场景信息带 background 时立即切换背景', () => {
+    const s = useGameStore()
+    s.uiMode = 'hub'
+    s.bindHandlers()
+
+    dispatch({
+      type: 'hub.buttons',
+      payload: {
+        scene: {
+          id: 'home',
+          name: '自宅',
+          region_name: '人间之里',
+          desc: '',
+          can_sleep: true,
+          background: 'home',
+          shop: null,
+          adjacent: [],
+        },
+        characters: [],
+        buttons: [],
+      },
+    })
+
+    expect(s.background).toBe('home')
+  })
+
+  it('从 Hub 进入角色行动时保留地点背景（避免先闪一下空背景）', () => {
+    const s = useGameStore()
+    s.uiMode = 'hub'
+    s.background = 'home'
+
+    s.chooseHubButton(hubButton())
+
+    expect(s.uiMode).toBe('game')
+    expect(s.background).toBe('home')
+  })
+
   it('旧事件的 event.done 不会结束当前新事件', () => {
     const s = useGameStore()
     s.uiMode = 'game'

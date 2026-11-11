@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGameStore, ASSET_BASE } from '../stores/game'
 
 const store = useGameStore()
 const { background } = storeToRefs(store)
+
+/** 图片加载失败才显示渐变占位；不能再让占位层一直盖在图片上 */
+const failed = ref(false)
+watch(background, () => { failed.value = false })
 
 /** 无真实图片资源：按背景名生成渐变占位（resources 补图后走真实 URL） */
 const style = computed(() => {
@@ -19,14 +23,22 @@ const style = computed(() => {
 })
 
 const imageUrl = computed(() =>
-  background.value ? `${ASSET_BASE}/images/backgrounds/${background.value}.png` : null,
+  background.value ? `${ASSET_BASE}/images/backgrounds/${background.value}.png` : '',
 )
+const showImage = computed(() => !!background.value && !failed.value)
 </script>
 
 <template>
   <div class="bg-layer">
-    <img v-if="imageUrl" :src="imageUrl" class="bg-img" alt="" @error="() => {}" />
-    <div class="bg-placeholder" :style="style">
+    <img
+      v-if="showImage"
+      :src="imageUrl"
+      :key="background ?? ''"
+      class="bg-img"
+      alt=""
+      @error="failed = true"
+    />
+    <div v-else class="bg-placeholder" :style="style">
       <span v-if="background" class="bg-name">{{ background }}</span>
     </div>
   </div>
@@ -45,6 +57,11 @@ const imageUrl = computed(() =>
   width: 100%;
   height: 100%;
   object-fit: cover;
+  animation: bgFade 0.45s ease;
+}
+
+@keyframes bgFade {
+  from { opacity: 0; }
 }
 
 .bg-placeholder {
